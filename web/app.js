@@ -357,7 +357,7 @@ function renderCourseDetail(course, sections) {
       <ul class="detail-toc-list">
         ${groups.map(({ title, secs, id }) => `
           <li>
-            <a class="toc-link" href="#${id}">${escHtml(title || "Untitled")}</a>
+            <a class="toc-link" href="javascript:void(0)" data-target="${id}">${escHtml(title || "Untitled")}</a>
             <span class="toc-count">${secs.length}</span>
           </li>`).join("")}
       </ul>
@@ -395,6 +395,13 @@ function renderCourseDetail(course, sections) {
       </div>
     </div>
   `;
+
+  detailContent.querySelectorAll(".toc-link[data-target]").forEach(link => {
+    link.addEventListener("click", () => {
+      const target = document.getElementById(link.dataset.target);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
 }
 
 function renderSection(s, hideTitle = false) {
