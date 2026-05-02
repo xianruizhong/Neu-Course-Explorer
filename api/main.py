@@ -1,20 +1,21 @@
 """
 NEU Course Explorer — FastAPI backend
-Serves course data from the SQLite database created by the scraper.
+Serves course data from PostgreSQL (connection string via DATABASE_URL).
 """
 
-import sqlite3
 import os
 from contextlib import contextmanager
 from typing import Optional
 
+import psycopg2
+import psycopg2.extras
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-DB_PATH = os.environ.get("DB_PATH", "../scraper/courses.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 app = FastAPI(title="NEU Course Explorer API", version="1.0.0")
 
@@ -32,16 +33,26 @@ app.add_middleware(
 
 @contextmanager
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA query_only = ON")
+    conn = psycopg2.connect(DATABASE_URL)
     try:
         yield conn
     finally:
         conn.close()
 
 
-def row_to_dict(row: sqlite3.Row) -> dict:
+def fetchall(conn, sql: str, params=()):
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(sql, params)
+        return cur.fetchall()
+
+
+def fetchone(conn, sql: str, params=()):
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(sql, params)
+        return cur.fetchone()
+
+
+def row_to_dict(row) -> dict:
     return dict(row)
 
 
@@ -147,17 +158,16 @@ class InstructorSummary(BaseModel):
 @app.get("/api/terms", response_model=list[Term])
 def list_terms():
     with get_db() as db:
-        rows = db.execute("SELECT code, description FROM terms ORDER BY code DESC").fetchall()
+        rows = fetchall(db, "SELECT code, description FROM terms ORDER BY code DESC")
     return [Term(**row_to_dict(r)) for r in rows]
 
 
 @app.get("/api/terms/{term_code}/subjects", response_model=list[Subject])
 def list_subjects(term_code: str):
     with get_db() as db:
-        rows = db.execute(
-            "SELECT code, description FROM subjects WHERE term_code=? ORDER BY description",
-            (term_code,)
-        ).fetchall()
+        rows = fetchall(db,
+            "SELECT code, description FROM subjects WHERE term_code=%s ORDER BY description",
+            (term_code,))
     if not rows:
         raise HTTPException(404, "Term not found or has no subjects")
     return [Subject(**row_to_dict(r)) for r in rows]
@@ -171,122 +181,71 @@ def list_courses(
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
 ):
-    """
-    List courses grouped by (subject, course_number).
-    Supports filtering by subject and full-text search.
-    """
+    subject_filter = "AND subject = %s" if subject else ""
+    subject_param = [subject] if subject else []
+
+    if q:
+        fts_condition = """AND to_tsvector('english',
+            coalesce(subject,'') || ' ' ||
+            coalesce(title,'') || ' ' ||
+            coalesce(description,'')
+        ) @@ plainto_tsquery('english', %s)"""
+        fts_params = [q]
+    else:
+        fts_condition = ""
+        fts_params = []
+
     with get_db() as db:
-        # Build base query — group sections into course-level rows
-        if q:
-            # FTS search: get matching CRNs first
-            fts_rows = db.execute(
-                """
-                SELECT crn, term_code FROM courses_fts
-                WHERE courses_fts MATCH ? AND term_code = ?
-                """,
-                (q, term_code),
-            ).fetchall()
-            crns = tuple(r["crn"] for r in fts_rows)
-            if not crns:
-                return SearchResult(total=0, offset=offset, limit=limit, results=[])
-
-            crn_filter = f"AND crn IN ({','.join('?' * len(crns))})"
-            base_params = list(crns)
-        else:
-            crn_filter = ""
-            base_params = []
-
-        subject_filter = "AND subject = ?" if subject else ""
-        subject_param = [subject] if subject else []
-
-        count_sql = f"""
-            SELECT COUNT(DISTINCT subject || '|' || course_number) as cnt
-            FROM courses
-            WHERE term_code = ?
-            {subject_filter}
-            {crn_filter}
-        """
-        total = db.execute(
-            count_sql, [term_code] + subject_param + base_params
-        ).fetchone()["cnt"]
-
-        # Aggregate sections into course-level rows
-        sql = f"""
-            SELECT
-                subject, subject_description, course_number, title,
-                MAX(credit_hour_low) as credit_hour_low,
-                MAX(credit_hour_high) as credit_hour_high,
-                MAX(description) as description,
-                MAX(prerequisites) as prerequisites,
-                COUNT(*) as section_count
-            FROM courses
-            WHERE term_code = ?
-            {subject_filter}
-            {crn_filter}
-            GROUP BY subject, course_number
-            ORDER BY subject, CAST(course_number AS INTEGER)
-            LIMIT ? OFFSET ?
-        """
-        rows = db.execute(
-            sql, [term_code] + subject_param + base_params + [limit, offset]
-        ).fetchall()
-
-    results = [
-        CourseGroup(
-            subject=r["subject"],
-            subject_description=r["subject_description"],
-            course_number=r["course_number"],
-            title=r["title"],
-            credit_hour_low=r["credit_hour_low"],
-            credit_hour_high=r["credit_hour_high"],
-            description=r["description"],
-            prerequisites=r["prerequisites"],
-            section_count=r["section_count"],
+        total_row = fetchone(db,
+            f"""SELECT COUNT(DISTINCT subject || '|' || course_number) AS cnt
+                FROM courses
+                WHERE term_code = %s {subject_filter} {fts_condition}""",
+            [term_code] + subject_param + fts_params,
         )
-        for r in rows
-    ]
-    return SearchResult(total=total, offset=offset, limit=limit, results=results)
+        total = total_row["cnt"]
+
+        if total == 0:
+            return SearchResult(total=0, offset=offset, limit=limit, results=[])
+
+        rows = fetchall(db,
+            f"""SELECT
+                    subject, subject_description, course_number, title,
+                    MAX(credit_hour_low)  AS credit_hour_low,
+                    MAX(credit_hour_high) AS credit_hour_high,
+                    MAX(description)      AS description,
+                    MAX(prerequisites)    AS prerequisites,
+                    COUNT(*)              AS section_count
+                FROM courses
+                WHERE term_code = %s {subject_filter} {fts_condition}
+                GROUP BY subject, subject_description, course_number, title
+                ORDER BY subject, CAST(course_number AS INTEGER)
+                LIMIT %s OFFSET %s""",
+            [term_code] + subject_param + fts_params + [limit, offset],
+        )
+
+    return SearchResult(
+        total=total, offset=offset, limit=limit,
+        results=[CourseGroup(**row_to_dict(r)) for r in rows],
+    )
 
 
-def _build_sections(db: sqlite3.Connection, rows, term_code: str) -> list[CourseSection]:
+def _build_sections(db, rows) -> list[CourseSection]:
     sections = []
     for row in rows:
         crn = row["crn"]
-        meetings = db.execute(
-            "SELECT * FROM meetings WHERE crn=? AND term_code=?", (crn, term_code)
-        ).fetchall()
-        fac = db.execute(
-            "SELECT * FROM faculty WHERE crn=? AND term_code=?", (crn, term_code)
-        ).fetchall()
-        attrs = db.execute(
-            "SELECT * FROM section_attributes WHERE crn=? AND term_code=?", (crn, term_code)
-        ).fetchall()
+        term_code = row["term_code"]
+        meetings = fetchall(db,
+            "SELECT * FROM meetings WHERE crn=%s AND term_code=%s", (crn, term_code))
+        fac = fetchall(db,
+            "SELECT * FROM faculty WHERE crn=%s AND term_code=%s", (crn, term_code))
+        attrs = fetchall(db,
+            "SELECT * FROM section_attributes WHERE crn=%s AND term_code=%s", (crn, term_code))
         d = row_to_dict(row)
-        d["open_section"] = bool(d.get("open_section"))
         sections.append(CourseSection(
             **d,
-            meetings=[
-                MeetingTime(
-                    begin_time=m["begin_time"], end_time=m["end_time"],
-                    start_date=m["start_date"], end_date=m["end_date"],
-                    building=m["building"], building_desc=m["building_desc"],
-                    room=m["room"],
-                    monday=bool(m["monday"]), tuesday=bool(m["tuesday"]),
-                    wednesday=bool(m["wednesday"]), thursday=bool(m["thursday"]),
-                    friday=bool(m["friday"]), saturday=bool(m["saturday"]),
-                    sunday=bool(m["sunday"]),
-                    schedule_type=m["schedule_type"],
-                )
-                for m in meetings
-            ],
-            faculty=[
-                FacultyMember(name=f["name"], email=f["email"], primary_ind=bool(f["primary_ind"]))
-                for f in fac
-            ],
-            attributes=[
-                SectionAttribute(code=a["code"], description=a["description"])
-                for a in attrs
-            ],
+            meetings=[MeetingTime(**row_to_dict(m)) for m in meetings],
+            faculty=[FacultyMember(**row_to_dict(f)) for f in fac],
+            attributes=[SectionAttribute(**row_to_dict(a)) for a in attrs],
         ))
     return sections
 
@@ -295,91 +254,79 @@ def _build_sections(db: sqlite3.Connection, rows, term_code: str) -> list[Course
          response_model=list[CourseSection])
 def get_sections(term_code: str, subject: str, course_number: str):
     with get_db() as db:
-        rows = db.execute(
-            "SELECT * FROM courses WHERE term_code=? AND subject=? AND course_number=? ORDER BY crn",
-            (term_code, subject.upper(), course_number),
-        ).fetchall()
+        rows = fetchall(db,
+            "SELECT * FROM courses WHERE term_code=%s AND subject=%s AND course_number=%s ORDER BY crn",
+            (term_code, subject.upper(), course_number))
         if not rows:
             raise HTTPException(404, "Course not found")
-        return _build_sections(db, rows, term_code)
+        return _build_sections(db, rows)
+
+
+@app.get("/api/terms/{term_code}/courses/{subject}/{course_number}",
+         response_model=CourseGroup)
+def get_course(term_code: str, subject: str, course_number: str):
+    with get_db() as db:
+        row = fetchone(db,
+            """SELECT subject, subject_description, course_number, title,
+                      MAX(credit_hour_low)  AS credit_hour_low,
+                      MAX(credit_hour_high) AS credit_hour_high,
+                      MAX(description)      AS description,
+                      MAX(prerequisites)    AS prerequisites,
+                      COUNT(*)              AS section_count
+               FROM courses
+               WHERE term_code=%s AND subject=%s AND course_number=%s
+               GROUP BY subject, subject_description, course_number, title""",
+            (term_code, subject.upper(), course_number))
+    if not row:
+        raise HTTPException(404, "Course not found")
+    return CourseGroup(**row_to_dict(row))
 
 
 @app.get("/api/terms/{term_code}/instructors", response_model=list[InstructorSummary])
 def search_instructors(term_code: str, q: str = Query(..., min_length=1)):
     tokens = q.strip().split()
-    token_conditions = " AND ".join("LOWER(name) LIKE ?" for _ in tokens)
-    token_params = [f"%{t.lower()}%" for t in tokens]
+    conditions = " AND ".join("LOWER(name) LIKE %s" for _ in tokens)
+    params = [term_code] + [f"%{t.lower()}%" for t in tokens]
     with get_db() as db:
-        rows = db.execute(
-            f"""
-            SELECT name, email, COUNT(DISTINCT crn) as section_count
-            FROM faculty
-            WHERE term_code=? AND {token_conditions}
-            GROUP BY name
-            ORDER BY name
-            LIMIT 20
-            """,
-            [term_code] + token_params,
-        ).fetchall()
-    return [InstructorSummary(name=r["name"], email=r["email"], section_count=r["section_count"]) for r in rows]
+        rows = fetchall(db,
+            f"""SELECT name, email, COUNT(DISTINCT crn) AS section_count
+                FROM faculty
+                WHERE term_code=%s AND {conditions}
+                GROUP BY name, email
+                ORDER BY name
+                LIMIT 20""",
+            params)
+    return [InstructorSummary(**row_to_dict(r)) for r in rows]
 
 
 @app.get("/api/terms/{term_code}/instructors/{instructor_name}/sections",
          response_model=list[CourseSection])
 def get_instructor_sections(term_code: str, instructor_name: str):
     tokens = instructor_name.strip().split()
-    token_conditions = " AND ".join("LOWER(name) LIKE ?" for _ in tokens)
-    token_params = [f"%{t.lower()}%" for t in tokens]
+    conditions = " AND ".join("LOWER(name) LIKE %s" for _ in tokens)
+    params = [term_code] + [f"%{t.lower()}%" for t in tokens]
     with get_db() as db:
-        crns = [r["crn"] for r in db.execute(
-            f"SELECT DISTINCT crn FROM faculty WHERE term_code=? AND {token_conditions}",
-            [term_code] + token_params,
-        ).fetchall()]
+        crns = [r["crn"] for r in fetchall(db,
+            f"SELECT DISTINCT crn FROM faculty WHERE term_code=%s AND {conditions}",
+            params)]
         if not crns:
             raise HTTPException(404, "Instructor not found")
-        placeholders = ",".join("?" * len(crns))
-        rows = db.execute(
-            f"SELECT * FROM courses WHERE term_code=? AND crn IN ({placeholders})"
-            " ORDER BY subject, CAST(course_number AS INTEGER), crn",
-            [term_code] + crns,
-        ).fetchall()
-        return _build_sections(db, rows, term_code)
-
-
-@app.get("/api/terms/{term_code}/courses/{subject}/{course_number}",
-         response_model=CourseGroup)
-def get_course(term_code: str, subject: str, course_number: str):
-    """Get course-level info (aggregated from all sections)."""
-    with get_db() as db:
-        row = db.execute(
-            """
-            SELECT subject, subject_description, course_number, title,
-                   MAX(credit_hour_low) as credit_hour_low,
-                   MAX(credit_hour_high) as credit_hour_high,
-                   MAX(description) as description,
-                   MAX(prerequisites) as prerequisites,
-                   COUNT(*) as section_count
-            FROM courses
-            WHERE term_code=? AND subject=? AND course_number=?
-            GROUP BY subject, course_number
-            """,
-            (term_code, subject.upper(), course_number),
-        ).fetchone()
-
-    if not row:
-        raise HTTPException(404, "Course not found")
-
-    return CourseGroup(**row_to_dict(row))
+        placeholders = ",".join("%s" * len(crns))
+        rows = fetchall(db,
+            f"""SELECT * FROM courses WHERE term_code=%s AND crn IN ({placeholders})
+                ORDER BY subject, CAST(course_number AS INTEGER), crn""",
+            [term_code] + crns)
+        return _build_sections(db, rows)
 
 
 @app.get("/api/health")
 def health():
     with get_db() as db:
-        counts = db.execute(
-            "SELECT (SELECT COUNT(*) FROM terms) as terms, "
-            "(SELECT COUNT(*) FROM courses) as courses"
-        ).fetchone()
-    return {"status": "ok", "terms": counts["terms"], "courses": counts["courses"]}
+        row = fetchone(db,
+            """SELECT
+                (SELECT COUNT(*) FROM terms)   AS terms,
+                (SELECT COUNT(*) FROM courses) AS courses""")
+    return {"status": "ok", "terms": row["terms"], "courses": row["courses"]}
 
 
 # ── Serve static frontend ──────────────────────────────────────────────────

@@ -1,11 +1,13 @@
 """
 NEU Banner Course Scraper
 Fetches course data from nubanner.neu.edu (no login required).
-Stores everything in a SQLite database.
+Stores everything in a PostgreSQL database (connection string via DATABASE_URL).
 """
 
+import os
 import requests
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import time
 import re
 import logging
@@ -22,108 +24,106 @@ log = logging.getLogger(__name__)
 
 BASE_URL = "https://nubanner.neu.edu/StudentRegistrationSsb/ssb"
 PAGE_SIZE = 500
-MAX_WORKERS = 4   # concurrent detail fetches — keep gentle on the server
-MAX_RETRIES = 3   # retries for transient timeouts
+MAX_WORKERS = 4       # concurrent detail fetches
+ENROLLMENT_WORKERS = 10  # concurrent subject fetches for enrollment refresh
+MAX_RETRIES = 3
 
 
 # ---------------------------------------------------------------------------
 # Database setup
 # ---------------------------------------------------------------------------
 
-def init_db(db_path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    cur = conn.cursor()
-
-    cur.executescript("""
-    CREATE TABLE IF NOT EXISTS terms (
+_SCHEMA = [
+    """CREATE TABLE IF NOT EXISTS terms (
         code        TEXT PRIMARY KEY,
         description TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS subjects (
+    )""",
+    """CREATE TABLE IF NOT EXISTS subjects (
         code        TEXT NOT NULL,
         description TEXT NOT NULL,
-        term_code   TEXT NOT NULL REFERENCES terms(code),
+        term_code   TEXT NOT NULL REFERENCES terms(code) ON DELETE CASCADE,
         PRIMARY KEY (code, term_code)
-    );
-
-    CREATE TABLE IF NOT EXISTS courses (
-        crn                     TEXT NOT NULL,
-        term_code               TEXT NOT NULL REFERENCES terms(code),
-        subject                 TEXT NOT NULL,
-        subject_description     TEXT,
-        course_number           TEXT NOT NULL,
-        title                   TEXT,
-        credit_hour_low         REAL,
-        credit_hour_high        REAL,
-        campus                  TEXT,
-        schedule_type           TEXT,
-        part_of_term            TEXT,
-        enrollment              INTEGER,
-        max_enrollment          INTEGER,
-        seats_available         INTEGER,
-        wait_count              INTEGER,
-        wait_capacity           INTEGER,
-        wait_available          INTEGER,
-        open_section            INTEGER,
-        description             TEXT,
-        prerequisites           TEXT,
-        scraped_at              TEXT,
+    )""",
+    """CREATE TABLE IF NOT EXISTS courses (
+        crn                 TEXT NOT NULL,
+        term_code           TEXT NOT NULL REFERENCES terms(code) ON DELETE CASCADE,
+        subject             TEXT NOT NULL,
+        subject_description TEXT,
+        course_number       TEXT NOT NULL,
+        title               TEXT,
+        credit_hour_low     DOUBLE PRECISION,
+        credit_hour_high    DOUBLE PRECISION,
+        campus              TEXT,
+        schedule_type       TEXT,
+        part_of_term        TEXT,
+        enrollment          INTEGER,
+        max_enrollment      INTEGER,
+        seats_available     INTEGER,
+        wait_count          INTEGER,
+        wait_capacity       INTEGER,
+        wait_available      INTEGER,
+        open_section        BOOLEAN DEFAULT FALSE,
+        description         TEXT,
+        prerequisites       TEXT,
+        scraped_at          TEXT,
         PRIMARY KEY (crn, term_code)
-    );
+    )""",
+    """CREATE TABLE IF NOT EXISTS meetings (
+        id            SERIAL PRIMARY KEY,
+        crn           TEXT NOT NULL,
+        term_code     TEXT NOT NULL,
+        begin_time    TEXT,
+        end_time      TEXT,
+        start_date    TEXT,
+        end_date      TEXT,
+        building      TEXT,
+        building_desc TEXT,
+        room          TEXT,
+        monday        BOOLEAN DEFAULT FALSE,
+        tuesday       BOOLEAN DEFAULT FALSE,
+        wednesday     BOOLEAN DEFAULT FALSE,
+        thursday      BOOLEAN DEFAULT FALSE,
+        friday        BOOLEAN DEFAULT FALSE,
+        saturday      BOOLEAN DEFAULT FALSE,
+        sunday        BOOLEAN DEFAULT FALSE,
+        schedule_type TEXT,
+        FOREIGN KEY (crn, term_code) REFERENCES courses(crn, term_code) ON DELETE CASCADE
+    )""",
+    """CREATE TABLE IF NOT EXISTS faculty (
+        id          SERIAL PRIMARY KEY,
+        crn         TEXT NOT NULL,
+        term_code   TEXT NOT NULL,
+        banner_id   TEXT,
+        name        TEXT,
+        email       TEXT,
+        primary_ind BOOLEAN DEFAULT FALSE,
+        FOREIGN KEY (crn, term_code) REFERENCES courses(crn, term_code) ON DELETE CASCADE
+    )""",
+    """CREATE TABLE IF NOT EXISTS section_attributes (
+        id          SERIAL PRIMARY KEY,
+        crn         TEXT NOT NULL,
+        term_code   TEXT NOT NULL,
+        code        TEXT,
+        description TEXT,
+        FOREIGN KEY (crn, term_code) REFERENCES courses(crn, term_code) ON DELETE CASCADE
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_courses_term    ON courses(term_code)",
+    "CREATE INDEX IF NOT EXISTS idx_courses_subject ON courses(subject, term_code)",
+    "CREATE INDEX IF NOT EXISTS idx_courses_number  ON courses(course_number)",
+    """CREATE INDEX IF NOT EXISTS idx_courses_fts ON courses
+        USING GIN(to_tsvector('english',
+            coalesce(subject, '') || ' ' ||
+            coalesce(title, '') || ' ' ||
+            coalesce(description, '')
+        ))""",
+]
 
-    CREATE TABLE IF NOT EXISTS meetings (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        crn             TEXT NOT NULL,
-        term_code       TEXT NOT NULL,
-        begin_time      TEXT,
-        end_time        TEXT,
-        start_date      TEXT,
-        end_date        TEXT,
-        building        TEXT,
-        building_desc   TEXT,
-        room            TEXT,
-        monday          INTEGER,
-        tuesday         INTEGER,
-        wednesday       INTEGER,
-        thursday        INTEGER,
-        friday          INTEGER,
-        saturday        INTEGER,
-        sunday          INTEGER,
-        schedule_type   TEXT,
-        FOREIGN KEY (crn, term_code) REFERENCES courses(crn, term_code)
-    );
 
-    CREATE TABLE IF NOT EXISTS faculty (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        crn             TEXT NOT NULL,
-        term_code       TEXT NOT NULL,
-        banner_id       TEXT,
-        name            TEXT,
-        email           TEXT,
-        primary_ind     INTEGER,
-        FOREIGN KEY (crn, term_code) REFERENCES courses(crn, term_code)
-    );
-
-    CREATE TABLE IF NOT EXISTS section_attributes (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        crn             TEXT NOT NULL,
-        term_code       TEXT NOT NULL,
-        code            TEXT,
-        description     TEXT,
-        FOREIGN KEY (crn, term_code) REFERENCES courses(crn, term_code)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_courses_term    ON courses(term_code);
-    CREATE INDEX IF NOT EXISTS idx_courses_subject ON courses(subject, term_code);
-    CREATE INDEX IF NOT EXISTS idx_courses_number  ON courses(course_number);
-    CREATE VIRTUAL TABLE IF NOT EXISTS courses_fts USING fts5(
-        crn, term_code, subject, title, description,
-        content='courses', content_rowid='rowid'
-    );
-    """)
+def init_db(dsn: str):
+    conn = psycopg2.connect(dsn)
+    with conn.cursor() as cur:
+        for stmt in _SCHEMA:
+            cur.execute(stmt)
     conn.commit()
     return conn
 
@@ -133,7 +133,6 @@ def init_db(db_path: str) -> sqlite3.Connection:
 # ---------------------------------------------------------------------------
 
 def make_session(term_code: str) -> requests.Session:
-    """Create a requests session with a Banner term cookie."""
     session = requests.Session()
     session.headers.update({
         "User-Agent": "NEU-Course-Explorer/1.0",
@@ -190,7 +189,6 @@ def get_all_subjects(session: requests.Session, term_code: str) -> list[dict]:
 
 
 def search_courses(session: requests.Session, term_code: str, subject: str) -> list[dict]:
-    """Fetch all sections for a subject in a term (paginated)."""
     all_sections = []
     offset = 0
     while True:
@@ -225,7 +223,7 @@ def _post_with_retry(session: requests.Session, url: str, data: dict) -> str:
             return resp.text
         except Exception as e:
             if attempt < MAX_RETRIES - 1:
-                time.sleep(2 ** attempt)  # exponential backoff: 1s, 2s
+                time.sleep(2 ** attempt)
             else:
                 raise e
     return ""
@@ -241,8 +239,7 @@ def get_course_description(session: requests.Session, crn: str, term_code: str) 
         section = soup.find("section")
         if not section:
             return ""
-        text = section.get_text(separator=" ", strip=True)
-        return re.sub(r"\s+", " ", text).strip()
+        return re.sub(r"\s+", " ", section.get_text(separator=" ", strip=True)).strip()
     except Exception as e:
         log.warning(f"Description fetch failed for CRN {crn}: {e}")
         return ""
@@ -258,8 +255,7 @@ def get_prerequisites(session: requests.Session, crn: str, term_code: str) -> st
         section = soup.find("section")
         if not section:
             return ""
-        text = section.get_text(separator=" ", strip=True)
-        text = re.sub(r"\s+", " ", text).strip()
+        text = re.sub(r"\s+", " ", section.get_text(separator=" ", strip=True)).strip()
         if "No prerequisite information available" in text:
             return ""
         return re.sub(r"^Catalog Prerequisites\s*", "", text).strip()
@@ -286,87 +282,121 @@ def get_faculty_meeting_times(session: requests.Session, crn: str, term_code: st
 # Core scraping logic
 # ---------------------------------------------------------------------------
 
-def upsert_section(conn: sqlite3.Connection, section: dict, term_code: str,
+def upsert_section(conn, section: dict, term_code: str,
                    description: str, prerequisites: str, fmt: list[dict]):
     crn = section["courseReferenceNumber"]
     now = datetime.utcnow().isoformat()
 
-    conn.execute("""
-        INSERT OR REPLACE INTO courses (
-            crn, term_code, subject, subject_description, course_number, title,
-            credit_hour_low, credit_hour_high, campus, schedule_type, part_of_term,
-            enrollment, max_enrollment, seats_available,
-            wait_count, wait_capacity, wait_available, open_section,
-            description, prerequisites, scraped_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    """, (
-        crn, term_code,
-        section.get("subject"), section.get("subjectDescription"),
-        section.get("courseNumber"), section.get("courseTitle"),
-        section.get("creditHourLow"), section.get("creditHourHigh"),
-        section.get("campusDescription"), section.get("scheduleTypeDescription"),
-        section.get("partOfTerm"),
-        section.get("enrollment"), section.get("maximumEnrollment"),
-        section.get("seatsAvailable"),
-        section.get("waitCount"), section.get("waitCapacity"),
-        section.get("waitAvailable"),
-        1 if section.get("openSection") else 0,
-        description, prerequisites, now,
-    ))
-
-    # Delete and re-insert meetings / faculty / attributes (fresh data)
-    conn.execute("DELETE FROM meetings WHERE crn=? AND term_code=?", (crn, term_code))
-    conn.execute("DELETE FROM faculty WHERE crn=? AND term_code=?", (crn, term_code))
-    conn.execute("DELETE FROM section_attributes WHERE crn=? AND term_code=?", (crn, term_code))
-
-    seen_faculty = set()
-    for mf in fmt:
-        mt = mf.get("meetingTime", {})
-        conn.execute("""
-            INSERT INTO meetings
-            (crn, term_code, begin_time, end_time, start_date, end_date,
-             building, building_desc, room,
-             monday, tuesday, wednesday, thursday, friday, saturday, sunday,
-             schedule_type)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO courses (
+                crn, term_code, subject, subject_description, course_number, title,
+                credit_hour_low, credit_hour_high, campus, schedule_type, part_of_term,
+                enrollment, max_enrollment, seats_available,
+                wait_count, wait_capacity, wait_available, open_section,
+                description, prerequisites, scraped_at
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (crn, term_code) DO UPDATE SET
+                subject             = EXCLUDED.subject,
+                subject_description = EXCLUDED.subject_description,
+                course_number       = EXCLUDED.course_number,
+                title               = EXCLUDED.title,
+                credit_hour_low     = EXCLUDED.credit_hour_low,
+                credit_hour_high    = EXCLUDED.credit_hour_high,
+                campus              = EXCLUDED.campus,
+                schedule_type       = EXCLUDED.schedule_type,
+                part_of_term        = EXCLUDED.part_of_term,
+                enrollment          = EXCLUDED.enrollment,
+                max_enrollment      = EXCLUDED.max_enrollment,
+                seats_available     = EXCLUDED.seats_available,
+                wait_count          = EXCLUDED.wait_count,
+                wait_capacity       = EXCLUDED.wait_capacity,
+                wait_available      = EXCLUDED.wait_available,
+                open_section        = EXCLUDED.open_section,
+                description         = EXCLUDED.description,
+                prerequisites       = EXCLUDED.prerequisites,
+                scraped_at          = EXCLUDED.scraped_at
         """, (
             crn, term_code,
-            mt.get("beginTime"), mt.get("endTime"),
-            mt.get("startDate"), mt.get("endDate"),
-            mt.get("building"), mt.get("buildingDescription"), mt.get("room"),
-            1 if mt.get("monday") else 0,
-            1 if mt.get("tuesday") else 0,
-            1 if mt.get("wednesday") else 0,
-            1 if mt.get("thursday") else 0,
-            1 if mt.get("friday") else 0,
-            1 if mt.get("saturday") else 0,
-            1 if mt.get("sunday") else 0,
-            mt.get("meetingScheduleType"),
+            section.get("subject"), section.get("subjectDescription"),
+            section.get("courseNumber"), section.get("courseTitle"),
+            section.get("creditHourLow"), section.get("creditHourHigh"),
+            section.get("campusDescription"), section.get("scheduleTypeDescription"),
+            section.get("partOfTerm"),
+            section.get("enrollment"), section.get("maximumEnrollment"),
+            section.get("seatsAvailable"),
+            section.get("waitCount"), section.get("waitCapacity"),
+            section.get("waitAvailable"),
+            bool(section.get("openSection")),
+            description, prerequisites, now,
         ))
-        for f in mf.get("faculty", []):
-            # fmt repeats faculty across meeting rows — deduplicate by bannerId
-            bid = f.get("bannerId")
-            if bid in seen_faculty:
-                continue
-            seen_faculty.add(bid)
-            conn.execute("""
-                INSERT INTO faculty (crn, term_code, banner_id, name, email, primary_ind)
-                VALUES (?,?,?,?,?,?)
+
+        cur.execute("DELETE FROM meetings WHERE crn=%s AND term_code=%s", (crn, term_code))
+        cur.execute("DELETE FROM faculty WHERE crn=%s AND term_code=%s", (crn, term_code))
+        cur.execute("DELETE FROM section_attributes WHERE crn=%s AND term_code=%s", (crn, term_code))
+
+        seen_faculty = set()
+        for mf in fmt:
+            mt = mf.get("meetingTime", {})
+            cur.execute("""
+                INSERT INTO meetings
+                (crn, term_code, begin_time, end_time, start_date, end_date,
+                 building, building_desc, room,
+                 monday, tuesday, wednesday, thursday, friday, saturday, sunday,
+                 schedule_type)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """, (
                 crn, term_code,
-                bid, f.get("displayName"), f.get("emailAddress"),
-                1 if f.get("primaryIndicator") else 0,
+                mt.get("beginTime"), mt.get("endTime"),
+                mt.get("startDate"), mt.get("endDate"),
+                mt.get("building"), mt.get("buildingDescription"), mt.get("room"),
+                bool(mt.get("monday")), bool(mt.get("tuesday")),
+                bool(mt.get("wednesday")), bool(mt.get("thursday")),
+                bool(mt.get("friday")), bool(mt.get("saturday")),
+                bool(mt.get("sunday")),
+                mt.get("meetingScheduleType"),
             ))
+            for f in mf.get("faculty", []):
+                bid = f.get("bannerId")
+                if bid in seen_faculty:
+                    continue
+                seen_faculty.add(bid)
+                cur.execute("""
+                    INSERT INTO faculty (crn, term_code, banner_id, name, email, primary_ind)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                """, (
+                    crn, term_code,
+                    bid, f.get("displayName"), f.get("emailAddress"),
+                    bool(f.get("primaryIndicator")),
+                ))
 
-    for attr in section.get("sectionAttributes", []):
-        conn.execute("""
-            INSERT INTO section_attributes (crn, term_code, code, description)
-            VALUES (?,?,?,?)
-        """, (crn, term_code, attr.get("code"), attr.get("description")))
+        for attr in section.get("sectionAttributes", []):
+            cur.execute("""
+                INSERT INTO section_attributes (crn, term_code, code, description)
+                VALUES (%s,%s,%s,%s)
+            """, (crn, term_code, attr.get("code"), attr.get("description")))
+
+
+def update_enrollment(conn, section: dict, term_code: str):
+    with conn.cursor() as cur:
+        cur.execute("""
+            UPDATE courses SET
+                enrollment=%s, max_enrollment=%s, seats_available=%s,
+                wait_count=%s, wait_capacity=%s, wait_available=%s,
+                open_section=%s, scraped_at=%s
+            WHERE crn=%s AND term_code=%s
+        """, (
+            section.get("enrollment"), section.get("maximumEnrollment"),
+            section.get("seatsAvailable"),
+            section.get("waitCount"), section.get("waitCapacity"),
+            section.get("waitAvailable"),
+            bool(section.get("openSection")),
+            datetime.utcnow().isoformat(),
+            section["courseReferenceNumber"], term_code,
+        ))
 
 
 def fetch_details_batch(sections: list[dict], term_code: str, session: requests.Session):
-    """Fetch description, prereqs, and faculty/meeting times for each section concurrently."""
     results = {}
 
     def fetch_one(section):
@@ -385,28 +415,57 @@ def fetch_details_batch(sections: list[dict], term_code: str, session: requests.
     return results
 
 
-def update_enrollment(conn: sqlite3.Connection, section: dict, term_code: str):
-    conn.execute("""
-        UPDATE courses SET
-            enrollment=?, max_enrollment=?, seats_available=?,
-            wait_count=?, wait_capacity=?, wait_available=?,
-            open_section=?, scraped_at=?
-        WHERE crn=? AND term_code=?
-    """, (
-        section.get("enrollment"), section.get("maximumEnrollment"),
-        section.get("seatsAvailable"),
-        section.get("waitCount"), section.get("waitCapacity"),
-        section.get("waitAvailable"),
-        1 if section.get("openSection") else 0,
-        datetime.utcnow().isoformat(),
-        section["courseReferenceNumber"], term_code,
-    ))
+def scrape_term(conn, term_code: str, term_desc: str,
+                subjects_filter: list[str] | None = None):
+    log.info(f"Scraping term: {term_desc} ({term_code})")
+
+    list_session = make_session(term_code)
+
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO terms (code, description) VALUES (%s, %s)
+            ON CONFLICT (code) DO UPDATE SET description = EXCLUDED.description
+        """, (term_code, term_desc))
+    conn.commit()
+
+    subjects = get_all_subjects(list_session, term_code)
+    log.info(f"  Found {len(subjects)} subjects")
+
+    for subj in subjects:
+        code = subj["code"]
+        if subjects_filter and code not in subjects_filter:
+            continue
+
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO subjects (code, description, term_code) VALUES (%s, %s, %s)
+                ON CONFLICT (code, term_code) DO UPDATE SET description = EXCLUDED.description
+            """, (code, subj["description"], term_code))
+
+        log.info(f"  Fetching subject {code} ...")
+        session = make_session(term_code)
+        sections = search_courses(session, term_code, code)
+        log.info(f"    {len(sections)} sections found")
+
+        if not sections:
+            conn.commit()
+            continue
+
+        details = fetch_details_batch(sections, term_code, session)
+
+        for section in sections:
+            crn = section["courseReferenceNumber"]
+            desc, prereqs, fmt = details.get(crn, ("", "", []))
+            upsert_section(conn, section, term_code, desc, prereqs, fmt)
+
+        conn.commit()
+        log.info(f"    Saved {len(sections)} sections for {code}")
+        time.sleep(0.2)
+
+    log.info(f"Done scraping {term_desc}")
 
 
-ENROLLMENT_WORKERS = 10  # concurrent subject fetches for enrollment refresh
-
-
-def refresh_enrollment(conn: sqlite3.Connection, term_code: str, term_desc: str,
+def refresh_enrollment(conn, term_code: str, term_desc: str,
                        subjects_filter: list[str] | None = None):
     log.info(f"Enrollment refresh: {term_desc} ({term_code})")
     t0 = time.time()
@@ -436,77 +495,26 @@ def refresh_enrollment(conn: sqlite3.Connection, term_code: str, term_desc: str,
     log.info(f"Enrollment refresh done: {total} sections updated in {elapsed:.1f}s")
 
 
-def scrape_term(conn: sqlite3.Connection, term_code: str, term_desc: str,
-                subjects_filter: list[str] | None = None):
-    log.info(f"Scraping term: {term_desc} ({term_code})")
-
-    # Use a shared session just for listing subjects/terms
-    list_session = make_session(term_code)
-
-    # Save term
-    conn.execute("INSERT OR REPLACE INTO terms (code, description) VALUES (?,?)",
-                 (term_code, term_desc))
-    conn.commit()
-
-    subjects = get_all_subjects(list_session, term_code)
-    log.info(f"  Found {len(subjects)} subjects")
-
-    for subj in subjects:
-        code = subj["code"]
-        if subjects_filter and code not in subjects_filter:
-            continue
-
-        conn.execute("""
-            INSERT OR REPLACE INTO subjects (code, description, term_code)
-            VALUES (?,?,?)
-        """, (code, subj["description"], term_code))
-
-        log.info(f"  Fetching subject {code} ...")
-        # Fresh session per subject — Banner's session state is sticky;
-        # reusing a session across subjects returns stale filtered results.
-        session = make_session(term_code)
-        sections = search_courses(session, term_code, code)
-        log.info(f"    {len(sections)} sections found")
-
-        if not sections:
-            conn.commit()
-            continue
-
-        # Fetch description + prereqs for all sections concurrently
-        details = fetch_details_batch(sections, term_code, session)
-
-        for section in sections:
-            crn = section["courseReferenceNumber"]
-            desc, prereqs, fmt = details.get(crn, ("", "", []))
-            upsert_section(conn, section, term_code, desc, prereqs, fmt)
-
-        conn.commit()
-        log.info(f"    Saved {len(sections)} sections for {code}")
-        time.sleep(0.2)  # gentle rate limiting per subject
-
-    # Rebuild FTS index
-    log.info("  Rebuilding FTS index ...")
-    conn.execute("INSERT INTO courses_fts(courses_fts) VALUES('rebuild')")
-    conn.commit()
-    log.info(f"Done scraping {term_desc}")
-
-
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(description="NEU Banner course scraper")
-    parser.add_argument("--db", default="courses.db", help="SQLite database path")
+    parser.add_argument("--dsn", default=os.environ.get("DATABASE_URL", ""),
+                        help="PostgreSQL connection string (overrides DATABASE_URL env var)")
     parser.add_argument("--terms", nargs="*", help="Term codes to scrape (default: latest semester)")
     parser.add_argument("--subjects", nargs="*", help="Subject codes to scrape (default: all)")
     parser.add_argument("--list-terms", action="store_true", help="List available terms and exit")
-    parser.add_argument("--enrollment", action="store_true", help="Fast enrollment-only refresh (skips descriptions, prereqs, meetings)")
+    parser.add_argument("--enrollment", action="store_true",
+                        help="Fast enrollment-only refresh (skips descriptions, prereqs, meetings)")
     args = parser.parse_args()
 
-    conn = init_db(args.db)
+    if not args.dsn:
+        parser.error("DATABASE_URL env var or --dsn required")
 
-    # Use a generic session just for listing terms
+    conn = init_db(args.dsn)
+
     session = requests.Session()
     session.headers["User-Agent"] = "NEU-Course-Explorer/1.0"
     all_terms = get_all_terms(session)
@@ -516,7 +524,6 @@ def main():
             print(f"{t['code']}  {t['description']}")
         return
 
-    # Default: scrape the most recent full semester (not CPS quarter, not View Only)
     if not args.terms:
         for t in all_terms:
             desc = t["description"]
