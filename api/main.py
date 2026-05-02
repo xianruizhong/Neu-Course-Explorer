@@ -310,7 +310,7 @@ def get_instructor_sections(term_code: str, instructor_name: str):
             params)]
         if not crns:
             raise HTTPException(404, "Instructor not found")
-        placeholders = ",".join("%s" * len(crns))
+        placeholders = ",".join(["%s"] * len(crns))
         rows = fetchall(db,
             f"""SELECT * FROM courses WHERE term_code=%s AND crn IN ({placeholders})
                 ORDER BY subject, CAST(course_number AS INTEGER), crn""",
