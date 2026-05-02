@@ -344,14 +344,13 @@ function groupSectionsByTitle(sections) {
 function renderCourseDetail(course, sections) {
   const credits = formatCredits(course.credit_hour_low, course.credit_hour_high);
   const groups = groupSectionsByTitle(sections);
-  const multipleGroups = groups.length > 1;
 
   const sectionsHtml = groups.map(({ title, secs, id }) => `
-    ${multipleGroups && title ? `<h4 class="section-group-title" id="${id}">${escHtml(title)}</h4>` : ""}
+    ${title ? `<h4 class="section-group-title" id="${id}">${escHtml(title)}</h4>` : ""}
     ${secs.map(s => renderSection(s, true)).join("")}
   `).join("");
 
-  const sidebarHtml = multipleGroups ? `
+  const sidebarHtml = `
     <div class="detail-toc">
       <div class="detail-toc-label">Sections</div>
       <ul class="detail-toc-list">
@@ -361,7 +360,7 @@ function renderCourseDetail(course, sections) {
             <span class="toc-count">${secs.length}</span>
           </li>`).join("")}
       </ul>
-    </div>` : "";
+    </div>`;
 
   detailContent.innerHTML = `
     <div class="detail-header">
