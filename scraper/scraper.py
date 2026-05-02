@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 BASE_URL = "https://nubanner.neu.edu/StudentRegistrationSsb/ssb"
 PAGE_SIZE = 500
 MAX_WORKERS = 4       # concurrent detail fetches
-ENROLLMENT_WORKERS = 10  # concurrent subject fetches for enrollment refresh
+ENROLLMENT_WORKERS = 25  # concurrent subject fetches for enrollment refresh
 MAX_RETRIES = 3
 
 
