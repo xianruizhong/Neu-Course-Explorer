@@ -441,6 +441,50 @@ header {
   .detail-body { grid-template-columns: 1fr; }
 }
 
+.detail-toc {
+  position: sticky;
+  top: 20px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.detail-toc-label {
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.detail-toc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.detail-toc-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.toc-link {
+  font-size: .88rem;
+  color: var(--neu-red);
+  text-decoration: none;
+  line-height: 1.4;
+  flex: 1;
+}
+.toc-link:hover { text-decoration: underline; }
+.toc-count {
+  font-size: .78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .detail-desc, .detail-prereqs {
   background: var(--card-bg);
   border: 1px solid var(--border);
@@ -618,3 +662,27 @@ header {
   color: var(--text-muted);
 }
 .empty-state h3 { font-size: 1.1rem; margin-bottom: 8px; color: var(--text); }
+
+/* ===== Footer ===== */
+.site-footer {
+  text-align: center;
+  padding: 24px 16px;
+  margin-top: 48px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: .88rem;
+}
+.footer-github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.footer-github-link:hover { color: var(--text); }
+.github-icon {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  flex-shrink: 0;
+}

@@ -331,8 +331,37 @@ async function loadCourseDetail(subject, courseNumber) {
   }
 }
 
+function groupSectionsByTitle(sections) {
+  const map = new Map();
+  for (const s of sections) {
+    const key = s.title || "";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(s);
+  }
+  return [...map.entries()].map(([title, secs], i) => ({ title, secs, id: `sg-${i}` }));
+}
+
 function renderCourseDetail(course, sections) {
   const credits = formatCredits(course.credit_hour_low, course.credit_hour_high);
+  const groups = groupSectionsByTitle(sections);
+  const multipleGroups = groups.length > 1;
+
+  const sectionsHtml = groups.map(({ title, secs, id }) => `
+    ${multipleGroups && title ? `<h4 class="section-group-title" id="${id}">${escHtml(title)}</h4>` : ""}
+    ${secs.map(s => renderSection(s, true)).join("")}
+  `).join("");
+
+  const sidebarHtml = multipleGroups ? `
+    <div class="detail-toc">
+      <div class="detail-toc-label">Sections</div>
+      <ul class="detail-toc-list">
+        ${groups.map(({ title, secs, id }) => `
+          <li>
+            <a class="toc-link" href="#${id}">${escHtml(title || "Untitled")}</a>
+            <span class="toc-count">${secs.length}</span>
+          </li>`).join("")}
+      </ul>
+    </div>` : "";
 
   detailContent.innerHTML = `
     <div class="detail-header">
@@ -358,28 +387,14 @@ function renderCourseDetail(course, sections) {
           </div>` : ""}
         <div class="sections-wrap">
           <h3>${sections.length} Section${sections.length !== 1 ? "s" : ""}</h3>
-          ${renderSectionsByTitle(sections)}
+          ${sectionsHtml}
         </div>
       </div>
       <div class="detail-side">
-        <!-- Additional info could go here -->
+        ${sidebarHtml}
       </div>
     </div>
   `;
-}
-
-function renderSectionsByTitle(sections) {
-  const groups = new Map();
-  for (const s of sections) {
-    const key = s.title || "";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(s);
-  }
-  const multipleGroups = groups.size > 1;
-  return [...groups.entries()].map(([title, secs]) => `
-    ${multipleGroups && title ? `<h4 class="section-group-title">${escHtml(title)}</h4>` : ""}
-    ${secs.map(s => renderSection(s, true)).join("")}
-  `).join("");
 }
 
 function renderSection(s, hideTitle = false) {
