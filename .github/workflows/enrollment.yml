@@ -14,6 +14,15 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r scraper/requirements.txt
+      - name: Check DATABASE_URL
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL is NOT set or empty"
+          else
+            echo "DATABASE_URL is set (length: ${#DATABASE_URL})"
+          fi
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
       - run: python scraper/scraper.py --enrollment
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
