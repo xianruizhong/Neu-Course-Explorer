@@ -435,6 +435,7 @@ function renderSection(s) {
         ${s.campus ? `<span class="campus-badge">${escHtml(s.campus)}</span>` : ""}
         ${s.schedule_type ? `<span class="campus-badge">${escHtml(s.schedule_type)}</span>` : ""}
       </div>
+      ${s.title ? `<div class="section-title">${escHtml(s.title)}</div>` : ""}
 
       <div class="section-grid">
         ${meetingRows}
@@ -442,6 +443,11 @@ function renderSection(s) {
           <label>Instructor</label>
           <div class="faculty-list">${facultyHtml}</div>
         </div>
+        ${(s.credit_hour_low || s.credit_hour_high) ? `
+        <div class="section-field">
+          <label>Credits</label>
+          <div>${formatCredits(s.credit_hour_low, s.credit_hour_high)}</div>
+        </div>` : ""}
         <div class="section-field">
           <label>Enrollment</label>
           <div>${s.enrollment ?? "?"} / ${s.max_enrollment ?? "?"}</div>

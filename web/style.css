@@ -480,6 +480,12 @@ header {
   margin-bottom: 10px;
   flex-wrap: wrap;
 }
+.section-title {
+  font-size: .95rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: var(--text);
+}
 .section-crn {
   font-size: .82rem;
   color: var(--text-muted);
