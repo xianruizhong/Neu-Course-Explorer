@@ -192,6 +192,9 @@ header {
   cursor: pointer;
   transition: border-color .15s, box-shadow .15s;
   text-align: left;
+  text-decoration: none;
+  color: inherit;
+  display: block;
 }
 .subject-chip:hover {
   border-color: var(--neu-red);
@@ -313,6 +316,8 @@ header {
   grid-template-columns: 1fr auto;
   gap: 8px;
   align-items: start;
+  text-decoration: none;
+  color: inherit;
 }
 .course-card:hover {
   border-color: var(--neu-red);

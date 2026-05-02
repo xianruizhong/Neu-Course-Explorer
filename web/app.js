@@ -69,6 +69,16 @@ function showView(name) {
 }
 
 // ── Routing ────────────────────────────────────────────────────────────────
+function subjectHref(code) {
+  const p = new URLSearchParams({ view: "list", term: state.term, subject: code });
+  return "#" + p.toString();
+}
+
+function courseHref(subject, number) {
+  const p = new URLSearchParams({ view: "detail", term: state.term, subject, number });
+  return "#" + p.toString();
+}
+
 function writeHash(view) {
   if (_restoring) return;
   if (view === "home") {
@@ -181,13 +191,14 @@ async function selectTerm(code) {
 // ── Subject grid (home) ────────────────────────────────────────────────────
 function renderSubjectGrid() {
   subjectGrid.innerHTML = state.subjects.map(s => `
-    <div class="subject-chip" data-code="${s.code}">
+    <a class="subject-chip" href="${subjectHref(s.code)}" data-code="${s.code}">
       <div class="subj-code">${s.code}</div>
-      <div class="subj-name">${s.description}</div>
-    </div>
+      <div class="subj-name">${escHtml(s.description)}</div>
+    </a>
   `).join("");
   subjectGrid.querySelectorAll(".subject-chip").forEach(chip => {
-    chip.addEventListener("click", () => {
+    chip.addEventListener("click", e => {
+      e.preventDefault();
       state.subject = chip.dataset.code;
       state.query = "";
       state.page = 0;
@@ -250,7 +261,7 @@ function renderCourseList(data) {
       ? c.description.slice(0, 160) + (c.description.length > 160 ? "…" : "")
       : "";
     return `
-      <div class="course-card" data-subject="${c.subject}" data-number="${c.course_number}">
+      <a class="course-card" href="${courseHref(c.subject, c.course_number)}" data-subject="${c.subject}" data-number="${c.course_number}">
         <div class="course-card-left">
           <div class="course-code">${c.subject} ${c.course_number}</div>
           <div class="course-title">${escHtml(c.title || "Untitled")}</div>
@@ -263,12 +274,14 @@ function renderCourseList(data) {
         <div class="course-card-right">
           <span class="section-count">${c.section_count} §</span>
         </div>
-      </div>`;
+      </a>`;
   }).join("");
 
   courseList.querySelectorAll(".course-card").forEach(card => {
-    card.addEventListener("click", () =>
-      loadCourseDetail(card.dataset.subject, card.dataset.number));
+    card.addEventListener("click", e => {
+      e.preventDefault();
+      loadCourseDetail(card.dataset.subject, card.dataset.number);
+    });
   });
 
   renderPagination(data.total);
