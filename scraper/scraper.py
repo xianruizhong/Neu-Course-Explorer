@@ -68,8 +68,12 @@ _SCHEMA = [
         description         TEXT,
         prerequisites       TEXT,
         scraped_at          TEXT,
+        sequence_number     TEXT,
+        course_title        TEXT,
         PRIMARY KEY (crn, term_code)
     )""",
+    "ALTER TABLE courses ADD COLUMN IF NOT EXISTS sequence_number TEXT",
+    "ALTER TABLE courses ADD COLUMN IF NOT EXISTS course_title TEXT",
     """CREATE TABLE IF NOT EXISTS meetings (
         id            SERIAL PRIMARY KEY,
         crn           TEXT NOT NULL,
@@ -217,6 +221,37 @@ def search_courses(session: requests.Session, term_code: str, subject: str) -> l
     return all_sections
 
 
+def get_catalog_titles(session: requests.Session, subject: str, term_code: str) -> dict[str, str]:
+    """Returns {courseNumber: catalogTitle} from the course catalog endpoint."""
+    try:
+        offset = 0
+        titles = {}
+        while True:
+            resp = session.get(
+                f"{BASE_URL}/courseSearchResults/courseSearchResults",
+                params={
+                    "txt_subject": subject,
+                    "txt_term": term_code,
+                    "pageOffset": offset,
+                    "pageMaxSize": PAGE_SIZE,
+                    "sortColumn": "subjectDescription",
+                    "sortDirection": "asc",
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            for item in data.get("data") or []:
+                titles[item["courseNumber"]] = item["courseTitle"]
+            if offset + PAGE_SIZE >= data.get("totalCount", 0):
+                break
+            offset += PAGE_SIZE
+        return titles
+    except Exception as e:
+        log.warning(f"Catalog title fetch failed for {subject}: {e}")
+        return {}
+
+
 def _post_with_retry(session: requests.Session, url: str, data: dict) -> str:
     for attempt in range(MAX_RETRIES):
         try:
@@ -285,7 +320,8 @@ def get_faculty_meeting_times(session: requests.Session, crn: str, term_code: st
 # ---------------------------------------------------------------------------
 
 def upsert_section(conn, section: dict, term_code: str,
-                   description: str, prerequisites: str, fmt: list[dict]):
+                   description: str, prerequisites: str, fmt: list[dict],
+                   course_title: str = ""):
     crn = section["courseReferenceNumber"]
     now = datetime.utcnow().isoformat()
 
@@ -296,8 +332,8 @@ def upsert_section(conn, section: dict, term_code: str,
                 credit_hour_low, credit_hour_high, campus, schedule_type, part_of_term,
                 enrollment, max_enrollment, seats_available,
                 wait_count, wait_capacity, wait_available, open_section,
-                description, prerequisites, scraped_at
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                description, prerequisites, scraped_at, sequence_number, course_title
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (crn, term_code) DO UPDATE SET
                 subject             = EXCLUDED.subject,
                 subject_description = EXCLUDED.subject_description,
@@ -317,7 +353,9 @@ def upsert_section(conn, section: dict, term_code: str,
                 open_section        = EXCLUDED.open_section,
                 description         = EXCLUDED.description,
                 prerequisites       = EXCLUDED.prerequisites,
-                scraped_at          = EXCLUDED.scraped_at
+                scraped_at          = EXCLUDED.scraped_at,
+                sequence_number     = EXCLUDED.sequence_number,
+                course_title        = EXCLUDED.course_title
         """, (
             crn, term_code,
             section.get("subject"), section.get("subjectDescription"),
@@ -331,6 +369,8 @@ def upsert_section(conn, section: dict, term_code: str,
             section.get("waitAvailable"),
             bool(section.get("openSection")),
             description, prerequisites, now,
+            section.get("sequenceNumber"),
+            course_title or section.get("courseTitle"),
         ))
 
         cur.execute("DELETE FROM meetings WHERE crn=%s AND term_code=%s", (crn, term_code))
@@ -453,12 +493,25 @@ def scrape_term(conn, term_code: str, term_desc: str,
             conn.commit()
             continue
 
+        catalog_titles = get_catalog_titles(session, code, term_code)
         details = fetch_details_batch(sections, term_code, session)
 
         for section in sections:
             crn = section["courseReferenceNumber"]
             desc, prereqs, fmt = details.get(crn, ("", "", []))
-            upsert_section(conn, section, term_code, desc, prereqs, fmt)
+            course_title = catalog_titles.get(section.get("courseNumber", ""), "")
+            upsert_section(conn, section, term_code, desc, prereqs, fmt, course_title)
+
+        # Remove any CRNs that no longer exist in Banner for this term+subject
+        live_crns = [s["courseReferenceNumber"] for s in sections]
+        with conn.cursor() as cur:
+            cur.execute("""
+                DELETE FROM courses
+                WHERE term_code = %s AND subject = %s AND crn != ALL(%s)
+            """, (term_code, code, live_crns))
+            deleted = cur.rowcount
+        if deleted:
+            log.info(f"    Removed {deleted} stale sections for {code}")
 
         conn.commit()
         log.info(f"    Saved {len(sections)} sections for {code}")

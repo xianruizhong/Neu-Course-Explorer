@@ -131,6 +131,7 @@ class CourseGroup(BaseModel):
     subject_description: Optional[str]
     course_number: str
     title: Optional[str]
+    course_title: Optional[str]
     credit_hour_low: Optional[float]
     credit_hour_high: Optional[float]
     description: Optional[str]
@@ -210,7 +211,8 @@ def list_courses(
         rows = fetchall(db,
             f"""SELECT
                     subject, subject_description, course_number,
-                    MIN(title)            AS title,
+                    MAX(course_title)     AS course_title,
+                    MAX(course_title)     AS title,
                     MAX(credit_hour_low)  AS credit_hour_low,
                     MAX(credit_hour_high) AS credit_hour_high,
                     MAX(description)      AS description,
@@ -269,7 +271,8 @@ def get_course(term_code: str, subject: str, course_number: str):
     with get_db() as db:
         row = fetchone(db,
             """SELECT subject, subject_description, course_number,
-                      MIN(title)            AS title,
+                      MAX(course_title)     AS course_title,
+                      MAX(course_title)     AS title,
                       MAX(credit_hour_low)  AS credit_hour_low,
                       MAX(credit_hour_high) AS credit_hour_high,
                       MAX(description)      AS description,

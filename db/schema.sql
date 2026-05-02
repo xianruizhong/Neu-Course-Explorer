@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS courses (
     prerequisites       TEXT,
     scraped_at          TEXT,
     sequence_number     TEXT,
+    course_title        TEXT,
     PRIMARY KEY (crn, term_code)
 );
 
