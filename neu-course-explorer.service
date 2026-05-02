@@ -1,0 +1,15 @@
+[Unit]
+Description=NEU Course Explorer API
+After=network.target
+
+[Service]
+User=jerry
+WorkingDirectory=%h/neu-course-explorer
+Environment="DB_PATH=%h/neu-course-explorer/scraper/courses.db"
+Environment="WEB_DIR=%h/neu-course-explorer/web"
+ExecStart=%h/neu-course-explorer/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8080
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEU Course Explorer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="#" class="logo" id="logo-link">
+        <span class="logo-neu">NEU</span>
+        <span class="logo-text">Course Explorer</span>
+      </a>
+      <nav class="header-nav">
+        <select id="term-select" class="term-selector" title="Select term"></select>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Home / landing view -->
+  <div id="view-home" class="view active">
+    <section class="hero">
+      <h1>Explore Northeastern Courses</h1>
+      <p class="hero-sub">Search the full course catalog with sections, enrollment, and prerequisites.</p>
+      <form class="hero-search" id="hero-search-form">
+        <input type="text" id="hero-search-input" placeholder="Search by course title, subject, or keyword…" autocomplete="off" />
+        <button type="submit">Search</button>
+      </form>
+      <div class="subject-grid" id="subject-grid"></div>
+    </section>
+  </div>
+
+  <!-- Course list view -->
+  <div id="view-list" class="view">
+    <div class="list-layout">
+      <aside class="sidebar">
+        <h3>Filter</h3>
+        <label for="sidebar-subject">Subject</label>
+        <select id="sidebar-subject">
+          <option value="">All subjects</option>
+        </select>
+        <label for="sidebar-search" style="margin-top:12px">Search</label>
+        <input type="text" id="sidebar-search" placeholder="Keyword…" />
+        <button id="sidebar-apply" class="btn-primary" style="margin-top:12px;width:100%">Apply</button>
+        <button id="sidebar-clear" class="btn-ghost" style="margin-top:6px;width:100%">Clear</button>
+      </aside>
+      <main class="course-main">
+        <div class="list-header">
+          <h2 id="list-title">Courses</h2>
+          <span id="list-count" class="count-badge"></span>
+        </div>
+        <div id="course-list" class="course-cards"></div>
+        <div id="pagination" class="pagination"></div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Course detail view -->
+  <div id="view-detail" class="view">
+    <div class="detail-layout">
+      <button class="back-btn" id="back-btn">← Back to courses</button>
+      <div id="course-detail-content"></div>
+    </div>
+  </div>
+
+  <div id="loading" class="loading-overlay hidden">
+    <div class="spinner"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

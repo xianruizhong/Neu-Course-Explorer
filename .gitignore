@@ -1,0 +1,33 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Database
+scraper/courses.db
+
+# Secrets / env
+.env
+.env.*
+
+# Vercel
+.vercel/
+
+# Installer
+cloudflared.deb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+.claude/
