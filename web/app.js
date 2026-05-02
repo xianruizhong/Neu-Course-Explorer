@@ -480,9 +480,12 @@ function renderSection(s, hideTitle = false) {
 }
 
 // ── Utilities ──────────────────────────────────────────────────────────────
+const _decodeEl = document.createElement("textarea");
 function escHtml(str) {
   if (!str) return "";
-  return String(str)
+  _decodeEl.innerHTML = String(str);
+  const decoded = _decodeEl.value;
+  return decoded
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
