@@ -12,7 +12,6 @@ import psycopg2.extras
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL", "")
@@ -329,7 +328,7 @@ def health():
     return {"status": "ok", "terms": row["terms"], "courses": row["courses"]}
 
 
-# ── Serve static frontend ──────────────────────────────────────────────────
-WEB_DIR = os.environ.get("WEB_DIR", "../web")
-if os.path.isdir(WEB_DIR):
+# ── Serve static frontend (local dev only) ────────────────────────────────
+WEB_DIR = os.environ.get("WEB_DIR", "")
+if WEB_DIR and os.path.isdir(WEB_DIR):
     app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="static")
