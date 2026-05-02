@@ -676,14 +676,18 @@ header {
   color: var(--text-muted);
   font-size: .88rem;
 }
-.footer-github-link {
+.footer-link {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   color: var(--text-muted);
   text-decoration: none;
 }
-.footer-github-link:hover { color: var(--text); }
+.footer-link:hover { color: var(--text); }
+.footer-sep {
+  color: var(--border);
+  margin: 0 8px;
+}
 .github-icon {
   width: 18px;
   height: 18px;
