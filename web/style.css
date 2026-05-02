@@ -437,6 +437,10 @@ header {
   gap: 24px;
   align-items: start;
 }
+.detail-side {
+  align-self: stretch;
+  position: relative;
+}
 @media (max-width: 768px) {
   .detail-body { grid-template-columns: 1fr; }
 }
