@@ -5,6 +5,8 @@ Stores everything in a PostgreSQL database (connection string via DATABASE_URL).
 """
 
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import requests
 import psycopg2
 import psycopg2.extras
