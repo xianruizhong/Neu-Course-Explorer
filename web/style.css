@@ -466,6 +466,14 @@ header {
   font-weight: 600;
   margin-bottom: 14px;
 }
+.section-group-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 18px 0 10px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
 .section-card {
   background: var(--card-bg);
   border: 1px solid var(--border);

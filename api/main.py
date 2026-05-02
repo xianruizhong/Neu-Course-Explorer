@@ -120,6 +120,7 @@ class CourseSection(BaseModel):
     description: Optional[str]
     prerequisites: Optional[str]
     scraped_at: Optional[str]
+    sequence_number: Optional[str]
     meetings: list[MeetingTime] = []
     faculty: list[FacultyMember] = []
     attributes: list[SectionAttribute] = []
@@ -208,7 +209,8 @@ def list_courses(
 
         rows = fetchall(db,
             f"""SELECT
-                    subject, subject_description, course_number, title,
+                    subject, subject_description, course_number,
+                    MIN(title)            AS title,
                     MAX(credit_hour_low)  AS credit_hour_low,
                     MAX(credit_hour_high) AS credit_hour_high,
                     MAX(description)      AS description,
@@ -216,7 +218,7 @@ def list_courses(
                     COUNT(*)              AS section_count
                 FROM courses
                 WHERE term_code = %s {subject_filter} {fts_condition}
-                GROUP BY subject, subject_description, course_number, title
+                GROUP BY subject, subject_description, course_number
                 ORDER BY subject, CAST(course_number AS INTEGER)
                 LIMIT %s OFFSET %s""",
             [term_code] + subject_param + fts_params + [limit, offset],
@@ -266,7 +268,8 @@ def get_sections(term_code: str, subject: str, course_number: str):
 def get_course(term_code: str, subject: str, course_number: str):
     with get_db() as db:
         row = fetchone(db,
-            """SELECT subject, subject_description, course_number, title,
+            """SELECT subject, subject_description, course_number,
+                      MIN(title)            AS title,
                       MAX(credit_hour_low)  AS credit_hour_low,
                       MAX(credit_hour_high) AS credit_hour_high,
                       MAX(description)      AS description,
@@ -274,7 +277,7 @@ def get_course(term_code: str, subject: str, course_number: str):
                       COUNT(*)              AS section_count
                FROM courses
                WHERE term_code=%s AND subject=%s AND course_number=%s
-               GROUP BY subject, subject_description, course_number, title""",
+               GROUP BY subject, subject_description, course_number""",
             (term_code, subject.upper(), course_number))
     if not row:
         raise HTTPException(404, "Course not found")

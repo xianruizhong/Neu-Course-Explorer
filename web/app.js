@@ -358,7 +358,7 @@ function renderCourseDetail(course, sections) {
           </div>` : ""}
         <div class="sections-wrap">
           <h3>${sections.length} Section${sections.length !== 1 ? "s" : ""}</h3>
-          ${sections.map(renderSection).join("")}
+          ${renderSectionsByTitle(sections)}
         </div>
       </div>
       <div class="detail-side">
@@ -368,7 +368,21 @@ function renderCourseDetail(course, sections) {
   `;
 }
 
-function renderSection(s) {
+function renderSectionsByTitle(sections) {
+  const groups = new Map();
+  for (const s of sections) {
+    const key = s.title || "";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(s);
+  }
+  const multipleGroups = groups.size > 1;
+  return [...groups.entries()].map(([title, secs]) => `
+    ${multipleGroups && title ? `<h4 class="section-group-title">${escHtml(title)}</h4>` : ""}
+    ${secs.map(s => renderSection(s, true)).join("")}
+  `).join("");
+}
+
+function renderSection(s, hideTitle = false) {
   const pct = s.max_enrollment > 0
     ? Math.round((s.enrollment / s.max_enrollment) * 100)
     : 0;
@@ -429,13 +443,13 @@ function renderSection(s) {
   return `
     <div class="section-card">
       <div class="section-card-header">
-        <span class="section-seq">Section ${s.crn.slice(-4)}</span>
+        <span class="section-seq">Section ${escHtml(s.sequence_number ?? s.crn.slice(-4))}</span>
         <span class="section-crn">CRN ${s.crn}</span>
         ${statusBadge}
         ${s.campus ? `<span class="campus-badge">${escHtml(s.campus)}</span>` : ""}
         ${s.schedule_type ? `<span class="campus-badge">${escHtml(s.schedule_type)}</span>` : ""}
       </div>
-      ${s.title ? `<div class="section-title">${escHtml(s.title)}</div>` : ""}
+      ${(!hideTitle && s.title) ? `<div class="section-title">${escHtml(s.title)}</div>` : ""}
 
       <div class="section-grid">
         ${meetingRows}
