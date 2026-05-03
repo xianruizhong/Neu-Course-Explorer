@@ -90,6 +90,7 @@ CREATE INDEX IF NOT EXISTS idx_courses_number  ON courses(course_number);
 CREATE INDEX IF NOT EXISTS idx_courses_fts ON courses
     USING GIN(to_tsvector('english',
         coalesce(subject, '') || ' ' ||
+        coalesce(course_number, '') || ' ' ||
         coalesce(title, '') || ' ' ||
         coalesce(description, '')
     ));

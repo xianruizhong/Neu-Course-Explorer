@@ -8,6 +8,8 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import psycopg2
 import psycopg2.extras
 import time
@@ -119,6 +121,7 @@ _SCHEMA = [
     """CREATE INDEX IF NOT EXISTS idx_courses_fts ON courses
         USING GIN(to_tsvector('english',
             coalesce(subject, '') || ' ' ||
+            coalesce(course_number, '') || ' ' ||
             coalesce(title, '') || ' ' ||
             coalesce(description, '')
         ))""",
@@ -140,6 +143,16 @@ def init_db(dsn: str):
 
 def make_session(term_code: str) -> requests.Session:
     session = requests.Session()
+    retry = Retry(
+        total=5,
+        connect=5,
+        backoff_factor=1,          # waits 1s, 2s, 4s, 8s, 16s between attempts
+        status_forcelist=[429, 500, 502, 503, 504],
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
     session.headers.update({
         "User-Agent": "NEU-Course-Explorer/1.0",
         "Accept": "application/json",
