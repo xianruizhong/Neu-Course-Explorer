@@ -192,6 +192,9 @@ header {
   cursor: pointer;
   transition: border-color .15s, box-shadow .15s;
   text-align: left;
+  text-decoration: none;
+  color: inherit;
+  display: block;
 }
 .subject-chip:hover {
   border-color: var(--neu-red);
@@ -313,6 +316,8 @@ header {
   grid-template-columns: 1fr auto;
   gap: 8px;
   align-items: start;
+  text-decoration: none;
+  color: inherit;
 }
 .course-card:hover {
   border-color: var(--neu-red);
@@ -669,21 +674,27 @@ header {
 
 /* ===== Footer ===== */
 .site-footer {
-  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
   padding: 24px 16px;
   margin-top: 48px;
   border-top: 1px solid var(--border);
   color: var(--text-muted);
   font-size: .88rem;
 }
-.footer-github-link {
+.footer-link {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   color: var(--text-muted);
   text-decoration: none;
 }
-.footer-github-link:hover { color: var(--text); }
+.footer-link:hover { color: var(--text); }
+.footer-sep {
+  color: var(--border);
+  margin: 0 8px;
+}
 .github-icon {
   width: 18px;
   height: 18px;
