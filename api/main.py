@@ -4,6 +4,7 @@ Serves course data from PostgreSQL (connection string via DATABASE_URL).
 """
 
 import os
+import re
 from contextlib import contextmanager
 from typing import Optional
 
@@ -15,6 +16,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL", "")
+
+# Matches "CS 1800", "cs1800", "EECE 2322" etc.
+_COURSE_CODE_RE = re.compile(r'^\s*([A-Za-z]+)\s*(\d+[A-Za-z]?)\s*$')
 
 app = FastAPI(title="NEU Course Explorer API", version="1.0.0")
 
@@ -185,16 +189,7 @@ def list_courses(
     subject_filter = "AND subject = %s" if subject else ""
     subject_param = [subject] if subject else []
 
-    if q:
-        fts_condition = """AND to_tsvector('english',
-            coalesce(subject,'') || ' ' ||
-            coalesce(title,'') || ' ' ||
-            coalesce(description,'')
-        ) @@ websearch_to_tsquery('english', %s)"""
-        fts_params = [q]
-        # Rank by: exact title match first, then field-weighted ts_rank_cd
-        # (title=A, subject=B, description=C), then alphabetical fallback.
-        order_clause = """ORDER BY
+    _rank_order = """
             CASE WHEN LOWER(MAX(title)) = LOWER(%s) THEN 0 ELSE 1 END,
             ts_rank_cd(
                 setweight(to_tsvector('english', coalesce(MAX(title),'')),       'A') ||
@@ -203,7 +198,35 @@ def list_courses(
                 websearch_to_tsquery('english', %s)
             ) DESC,
             subject, CAST(course_number AS INTEGER)"""
-        order_params = [q, q]
+
+    _base_fts = """to_tsvector('english',
+            coalesce(subject,'') || ' ' ||
+            coalesce(course_number,'') || ' ' ||
+            coalesce(title,'') || ' ' ||
+            coalesce(description,'')
+        ) @@ websearch_to_tsquery('english', %s)"""
+
+    if q:
+        m = _COURSE_CODE_RE.match(q)
+        if m:
+            # "CS 1800" — guarantee the exact course appears even if FTS misses it,
+            # and pin it to position 0 in the ranking.
+            parsed_subj = m.group(1).upper()
+            parsed_num  = m.group(2)
+            fts_condition = f"""AND (
+                (UPPER(subject) = %s AND course_number = %s)
+                OR {_base_fts}
+            )"""
+            fts_params = [parsed_subj, parsed_num, q]
+            order_clause = f"""ORDER BY
+            CASE WHEN UPPER(subject) = %s AND course_number = %s THEN 0 ELSE 1 END,
+            {_rank_order}"""
+            order_params = [parsed_subj, parsed_num, q, q]
+        else:
+            fts_condition = f"AND {_base_fts}"
+            fts_params = [q]
+            order_clause = f"ORDER BY {_rank_order}"
+            order_params = [q, q]
     else:
         fts_condition = ""
         fts_params = []
