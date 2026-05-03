@@ -1,13 +1,27 @@
 services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: neu_courses
+      POSTGRES_USER: neu
+      POSTGRES_PASSWORD: neu
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
   web:
     build: .
     container_name: neu-course-explorer
     restart: unless-stopped
     ports:
-      - "80:8080"
-    volumes:
-      # Mount the scraper dir so the nightly cron update is picked up live
-      - ./scraper:/data:ro
+      - "8080:8080"
     environment:
-      - DB_PATH=/data/courses.db
+      - DATABASE_URL=postgresql://neu:neu@db/neu_courses
       - WEB_DIR=/app/web
+    depends_on:
+      - db
+
+volumes:
+  pgdata:
