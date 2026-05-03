@@ -190,11 +190,25 @@ def list_courses(
             coalesce(subject,'') || ' ' ||
             coalesce(title,'') || ' ' ||
             coalesce(description,'')
-        ) @@ plainto_tsquery('english', %s)"""
+        ) @@ websearch_to_tsquery('english', %s)"""
         fts_params = [q]
+        # Rank by: exact title match first, then field-weighted ts_rank_cd
+        # (title=A, subject=B, description=C), then alphabetical fallback.
+        order_clause = """ORDER BY
+            CASE WHEN LOWER(MAX(title)) = LOWER(%s) THEN 0 ELSE 1 END,
+            ts_rank_cd(
+                setweight(to_tsvector('english', coalesce(MAX(title),'')),       'A') ||
+                setweight(to_tsvector('english', coalesce(subject,'')),           'B') ||
+                setweight(to_tsvector('english', coalesce(MAX(description),'')), 'C'),
+                websearch_to_tsquery('english', %s)
+            ) DESC,
+            subject, CAST(course_number AS INTEGER)"""
+        order_params = [q, q]
     else:
         fts_condition = ""
         fts_params = []
+        order_clause = "ORDER BY subject, CAST(course_number AS INTEGER)"
+        order_params = []
 
     with get_db() as db:
         total_row = fetchone(db,
@@ -212,7 +226,7 @@ def list_courses(
             f"""SELECT
                     subject, subject_description, course_number,
                     MAX(course_title)     AS course_title,
-                    MAX(course_title)     AS title,
+                    MAX(title)            AS title,
                     MAX(credit_hour_low)  AS credit_hour_low,
                     MAX(credit_hour_high) AS credit_hour_high,
                     MAX(description)      AS description,
@@ -221,9 +235,9 @@ def list_courses(
                 FROM courses
                 WHERE term_code = %s {subject_filter} {fts_condition}
                 GROUP BY subject, subject_description, course_number
-                ORDER BY subject, CAST(course_number AS INTEGER)
+                {order_clause}
                 LIMIT %s OFFSET %s""",
-            [term_code] + subject_param + fts_params + [limit, offset],
+            [term_code] + subject_param + fts_params + order_params + [limit, offset],
         )
 
     return SearchResult(
