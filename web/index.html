@@ -36,15 +36,8 @@
   }
   </script>
 
-  <link rel="stylesheet" href="style.css" />
-  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RDVLMFTNEZ"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-RDVLMFTNEZ');
-  </script>
+  <link rel="preload" href="style.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="style.css"></noscript>
 </head>
 <body>
   <header>
@@ -140,5 +133,13 @@
   </noscript>
   <script src="app.js"></script>
   <script defer src="/_vercel/insights/script.js"></script>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RDVLMFTNEZ"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-RDVLMFTNEZ');
+  </script>
 </body>
 </html>
