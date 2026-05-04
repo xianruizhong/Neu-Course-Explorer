@@ -12,7 +12,7 @@ import psycopg2
 import psycopg2.extras
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -361,39 +361,6 @@ def get_instructor_sections(term_code: str, instructor_name: str):
             [term_code] + crns)
         return _build_sections(db, rows)
 
-
-SITE_URL = "https://neu-course-explorer.vercel.app"
-
-@app.get("/sitemap.xml", include_in_schema=False)
-def sitemap():
-    with get_db() as db:
-        terms = fetchall(db, "SELECT code FROM terms ORDER BY code DESC LIMIT 2")
-        term_codes = [r["code"] for r in terms]
-
-        urls = [f"""  <url>
-    <loc>{SITE_URL}/</loc>
-    <changefreq>daily</changefreq>
-    <priority>1.0</priority>
-  </url>"""]
-
-        for code in term_codes:
-            courses = fetchall(db,
-                """SELECT DISTINCT subject, course_number
-                   FROM courses WHERE term_code=%s
-                   ORDER BY subject, course_number""",
-                (code,))
-            for c in courses:
-                frag = f"view=detail&amp;term={code}&amp;subject={c['subject']}&amp;number={c['course_number']}"
-                urls.append(f"""  <url>
-    <loc>{SITE_URL}/#{frag}</loc>
-    <priority>0.7</priority>
-  </url>""")
-
-    xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
-    xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-    xml += "\n".join(urls)
-    xml += "\n</urlset>"
-    return Response(content=xml, media_type="application/xml")
 
 
 @app.get("/api/health")
