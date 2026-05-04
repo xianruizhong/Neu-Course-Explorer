@@ -364,12 +364,19 @@ def get_instructor_sections(term_code: str, instructor_name: str):
 
 
 SITE_URL = "https://neu-course-explorer.vercel.app"
+_TERM_PATH_RE = re.compile(r'(Spring|Summer\s*\d*|Fall)\s+(\d{4})', re.IGNORECASE)
+
+def _term_desc_to_path(desc: str) -> str | None:
+    m = _TERM_PATH_RE.search(desc)
+    if not m:
+        return None
+    season = re.sub(r'\s+', '', m.group(1).lower())
+    return f"{m.group(2)}/{season}"
 
 @app.get("/sitemap.xml", include_in_schema=False)
 def sitemap():
     with get_db() as db:
-        terms = fetchall(db, "SELECT code FROM terms ORDER BY code DESC LIMIT 2")
-        term_codes = [r["code"] for r in terms]
+        terms = fetchall(db, "SELECT code, description FROM terms ORDER BY code DESC LIMIT 2")
 
         urls = [f"""  <url>
     <loc>{SITE_URL}/</loc>
@@ -377,16 +384,19 @@ def sitemap():
     <priority>1.0</priority>
   </url>"""]
 
-        for code in term_codes:
+        for term in terms:
+            term_path = _term_desc_to_path(term["description"])
+            if not term_path:
+                continue
             courses = fetchall(db,
                 """SELECT DISTINCT subject, course_number
                    FROM courses WHERE term_code=%s
                    ORDER BY subject, course_number""",
-                (code,))
+                (term["code"],))
             for c in courses:
-                frag = f"view=detail&amp;term={code}&amp;subject={c['subject']}&amp;number={c['course_number']}"
+                url = f"{SITE_URL}/schedule/{term_path}/{c['subject']}/{c['course_number']}"
                 urls.append(f"""  <url>
-    <loc>{SITE_URL}/#{frag}</loc>
+    <loc>{url}</loc>
     <priority>0.7</priority>
   </url>""")
 
