@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://neu-course-explorer.vercel.app/sitemap.xml
+Sitemap: https://neu-course-explorer.vercel.app/sitemap/sitemap.xml
