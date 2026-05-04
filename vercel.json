@@ -1,5 +1,13 @@
 {
   "outputDirectory": "web",
+  "headers": [
+    {
+      "source": "/sitemap/sitemap.xml",
+      "headers": [
+        { "key": "Content-Type", "value": "text/xml; charset=utf-8" }
+      ]
+    }
+  ],
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api/index" }
   ]
