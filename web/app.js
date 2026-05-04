@@ -73,62 +73,91 @@ function showView(name) {
 }
 
 // ── Routing ────────────────────────────────────────────────────────────────
+
+// "Fall 2026 Semester" → "2026/fall",  "Summer 1 2026" → "2026/summer1"
+function termDescToPath(desc) {
+  const m = desc.match(/(Spring|Summer\s*\d*|Fall)\s+(\d{4})/i);
+  if (!m) return null;
+  return `${m[2]}/${m[1].toLowerCase().replace(/\s+/g, "")}`;
+}
+
+function currentTermPath() {
+  const term = state.terms.find(t => t.code === state.term);
+  return term ? termDescToPath(term.description) : "";
+}
+
+function findTermByPath(year, season) {
+  return state.terms.find(t => termDescToPath(t.description) === `${year}/${season}`);
+}
+
 function subjectHref(code) {
-  const p = new URLSearchParams({ view: "list", term: state.term, subject: code });
-  return "#" + p.toString();
+  return `/schedule/${currentTermPath()}/${code}`;
 }
 
 function courseHref(subject, number) {
-  const p = new URLSearchParams({ view: "detail", term: state.term, subject, number });
-  return "#" + p.toString();
+  return `/schedule/${currentTermPath()}/${subject}/${number}`;
 }
 
-function writeHash(view) {
+function instructorHref(name) {
+  return `/schedule/${currentTermPath()}/instructor/${encodeURIComponent(name)}`;
+}
+
+function writePath(view) {
   if (_restoring) return;
-  if (view === "home") {
-    history.pushState(null, "", location.pathname);
-    return;
-  }
-  const p = new URLSearchParams();
-  p.set("view", view);
-  if (state.term) p.set("term", state.term);
+  const tp = currentTermPath();
+  if (view === "home") { history.pushState(null, "", "/"); return; }
   if (view === "list") {
-    if (state.subject) p.set("subject", state.subject);
-    if (state.query)   p.set("q", state.query);
-    if (state.page)    p.set("page", state.page);
+    let path = `/schedule/${tp}`;
+    if (state.subject) path += `/${state.subject}`;
+    const qp = new URLSearchParams();
+    if (state.query) qp.set("q", state.query);
+    if (state.page)  qp.set("page", state.page);
+    const qs = qp.toString();
+    history.pushState(null, "", path + (qs ? "?" + qs : ""));
   } else if (view === "detail") {
-    p.set("subject", state.detailSubject);
-    p.set("number", state.detailNumber);
+    history.pushState(null, "", `/schedule/${tp}/${state.detailSubject}/${state.detailNumber}`);
   } else if (view === "instructor") {
-    p.set("name", state.detailInstructor);
+    history.pushState(null, "", `/schedule/${tp}/instructor/${encodeURIComponent(state.detailInstructor)}`);
   }
-  history.pushState(null, "", "#" + p.toString());
 }
 
-async function restoreFromHash() {
-  const hash = location.hash.slice(1);
-  if (!hash) { showView("home"); return; }
-  const p = new URLSearchParams(hash);
-  const view = p.get("view");
-  const term = p.get("term");
+async function restoreFromPath() {
+  const pathname = location.pathname;
+  const params   = new URLSearchParams(location.search);
+  const m = pathname.match(/^\/schedule\/(\d{4})\/([^/]+)(\/.*)?$/);
+  if (!m) { showView("home"); return; }
+  const [, year, season, rest] = m;
 
   _restoring = true;
   try {
-    if (term && term !== state.term) {
-      termSelect.value = term;
-      await selectTerm(term);
+    const term = findTermByPath(year, season);
+    if (!term) { showView("home"); return; }
+    if (term.code !== state.term) {
+      termSelect.value = term.code;
+      await selectTerm(term.code);
     }
-    if (view === "list") {
-      state.subject = p.get("subject") || "";
-      state.query   = p.get("q") || "";
-      state.page    = parseInt(p.get("page") || "0", 10);
-      await loadCourseList();
-    } else if (view === "detail") {
-      await loadCourseDetail(p.get("subject"), p.get("number"));
-    } else if (view === "instructor") {
-      await loadInstructorSections(p.get("name"));
+    if (!rest || rest === "/") {
+      const q = params.get("q");
+      if (q) {
+        state.subject = "";
+        state.query   = q;
+        state.page    = parseInt(params.get("page") || "0", 10);
+        await loadCourseList();
+      } else {
+        showView("home");
+      }
     } else {
-      showView("home");
+      const segs = rest.slice(1).split("/").filter(Boolean);
+      if (segs[0] === "instructor") {
+        await loadInstructorSections(decodeURIComponent(segs.slice(1).join("/")));
+      } else if (segs.length === 1) {
+        state.subject = segs[0].toUpperCase();
+        state.query   = params.get("q") || "";
+        state.page    = parseInt(params.get("page") || "0", 10);
+        await loadCourseList();
+      } else if (segs.length >= 2) {
+        await loadCourseDetail(segs[0].toUpperCase(), segs[1]);
+      }
     }
   } finally {
     _restoring = false;
@@ -156,16 +185,16 @@ async function init() {
     }
     populateTermSelect();
 
-    const p = new URLSearchParams(location.hash.slice(1));
-    const hashTerm = p.get("term");
-    const initialTerm = (hashTerm && state.terms.find(t => t.code === hashTerm))
-      ? hashTerm
-      : state.terms[0].code;
+    const pathMatch = location.pathname.match(/^\/schedule\/(\d{4})\/([^/]+)/);
+    const pathTerm  = pathMatch ? state.terms.find(
+      t => termDescToPath(t.description) === `${pathMatch[1]}/${pathMatch[2]}`
+    ) : null;
+    const initialTerm = pathTerm ? pathTerm.code : state.terms[0].code;
     termSelect.value = initialTerm;
     await selectTerm(initialTerm);
 
-    if (location.hash.slice(1)) {
-      await restoreFromHash();
+    if (location.pathname.startsWith("/schedule/")) {
+      await restoreFromPath();
     } else {
       showView("home");
     }
@@ -220,7 +249,7 @@ function populateSidebarSubjects() {
 async function loadCourseList() {
   showLoading(true);
   showView("list");
-  writeHash("list");
+  writePath("list");
   try {
     const params = new URLSearchParams({
       offset: state.page * PAGE_LIMIT,
@@ -344,7 +373,7 @@ async function loadCourseDetail(subject, courseNumber) {
   state.detailNumber = courseNumber;
   showLoading(true);
   showView("detail");
-  writeHash("detail");
+  writePath("detail");
   try {
     const [course, sections] = await Promise.all([
       apiFetch(`${API}/terms/${state.term}/courses/${subject}/${courseNumber}`),
@@ -458,7 +487,7 @@ function renderSection(s, hideTitle = false) {
   const facultyHtml = s.faculty.length
     ? s.faculty.map(f => {
         const nameLink = f.name
-          ? `<a class="instructor-link" href="#" data-instructor="${escHtml(f.name)}">${escHtml(f.name)}</a>`
+          ? `<a class="instructor-link" href="${instructorHref(f.name)}" data-instructor="${escHtml(f.name)}">${escHtml(f.name)}</a>`
           : "Staff";
         const emailLink = f.email ? ` <a href="mailto:${f.email}" title="${escHtml(f.email)}">✉</a>` : "";
         return nameLink + emailLink;
@@ -610,7 +639,7 @@ async function loadInstructorSections(name) {
   state.detailInstructor = name;
   showLoading(true);
   showView("instructor");
-  writeHash("instructor");
+  writePath("instructor");
   try {
     const sections = await apiFetch(
       `${API}/terms/${state.term}/instructors/${encodeURIComponent(name)}/sections`
@@ -638,7 +667,8 @@ function renderInstructorView(name, sections) {
 
   const groupsHtml = [...groups.values()].map(g => `
     <div class="instructor-course-group">
-      <h3 class="instructor-course-header">${escHtml(g.subject)} ${escHtml(g.course_number)}
+      <h3 class="instructor-course-header">
+        <a class="instructor-course-link" href="${courseHref(g.subject, g.course_number)}" data-subject="${escHtml(g.subject)}" data-number="${escHtml(g.course_number)}">${escHtml(g.subject)} ${escHtml(g.course_number)}</a>
         <span class="instructor-course-title">— ${escHtml(g.title || "")}</span>
       </h3>
       ${g.sections.map(renderSection).join("")}
@@ -654,12 +684,18 @@ function renderInstructorView(name, sections) {
     </div>
     ${groupsHtml || '<p class="empty-state">No sections found.</p>'}
   `;
+  instructorContent.querySelectorAll(".instructor-course-link").forEach(link => {
+    link.addEventListener("click", e => {
+      e.preventDefault();
+      loadCourseDetail(link.dataset.subject, link.dataset.number);
+    });
+  });
 }
 
 // ── Event listeners ────────────────────────────────────────────────────────
 termSelect.addEventListener("change", () => {
   selectTerm(termSelect.value);
-  history.pushState(null, "", location.pathname);
+  history.pushState(null, "", "/");
   showView("home");
 });
 
@@ -711,12 +747,12 @@ document.addEventListener("click", e => {
 
 logoLink.addEventListener("click", e => {
   e.preventDefault();
-  history.pushState(null, "", location.pathname);
+  history.pushState(null, "", "/");
   showView("home");
 });
 
 window.addEventListener("popstate", () => {
-  restoreFromHash();
+  restoreFromPath();
 });
 
 // ── Boot ───────────────────────────────────────────────────────────────────
