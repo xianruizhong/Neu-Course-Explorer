@@ -4,6 +4,38 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NEU Course Explorer</title>
+  <meta name="description" content="Browse Northeastern University courses, sections, real-time enrollment, instructors, and prerequisites across all terms.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://neu-course-explorer.vercel.app/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="NEU Course Explorer">
+  <meta property="og:title" content="NEU Course Explorer">
+  <meta property="og:description" content="Browse Northeastern University courses, sections, real-time enrollment, instructors, and prerequisites across all terms.">
+  <meta property="og:url" content="https://neu-course-explorer.vercel.app/">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="NEU Course Explorer">
+  <meta name="twitter:description" content="Browse Northeastern University courses, sections, real-time enrollment, instructors, and prerequisites across all terms.">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "NEU Course Explorer",
+    "url": "https://neu-course-explorer.vercel.app/",
+    "description": "Browse Northeastern University courses, sections, real-time enrollment, instructors, and prerequisites across all terms.",
+    "potentialAction": {
+      "@type": "SearchAction",
+      "target": {
+        "@type": "EntryPoint",
+        "urlTemplate": "https://neu-course-explorer.vercel.app/#view=list&q={search_term_string}"
+      },
+      "query-input": "required name=search_term_string"
+    }
+  }
+  </script>
+
   <link rel="stylesheet" href="style.css" />
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-RDVLMFTNEZ"></script>
@@ -103,6 +135,9 @@
     </a>
   </footer>
 
+  <noscript>
+    <p>NEU Course Explorer lets you browse Northeastern University's full course catalog — search by subject, keyword, or instructor and view real-time enrollment, meeting times, and prerequisites. JavaScript is required to use this site. Visit <a href="https://www.northeastern.edu">northeastern.edu</a> for the official course catalog.</p>
+  </noscript>
   <script src="app.js"></script>
   <script defer src="/_vercel/insights/script.js"></script>
 </body>

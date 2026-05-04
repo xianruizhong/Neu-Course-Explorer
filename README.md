@@ -3,7 +3,6 @@
 A course catalog browser for Northeastern University, similar to [courses.illinois.edu](https://courses.illinois.edu). Browse courses by subject, search by keyword or instructor, and see real-time enrollment across sections.
 
 Live at **[neu-course-explorer.vercel.app](https://neu-course-explorer.vercel.app)**  
-Built by [Xianrui Zhong](https://xianruizhong.github.io/)
 
 Data is pulled from the public NEU Banner API — no login required.
 

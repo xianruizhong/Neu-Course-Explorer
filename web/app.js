@@ -66,6 +66,10 @@ searchModeToggle.addEventListener("click", e => {
 function showView(name) {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   $(`view-${name}`).classList.add("active");
+  if (name === "home") {
+    setPageMeta(SITE_NAME, DEFAULT_DESC);
+    clearJsonLd();
+  }
 }
 
 // ── Routing ────────────────────────────────────────────────────────────────
@@ -241,6 +245,14 @@ function renderCourseList(data) {
   listTitle.textContent = subjName;
   listCount.textContent = `${data.total.toLocaleString()} course${data.total !== 1 ? "s" : ""}`;
 
+  const listDesc = state.query
+    ? `${data.total} Northeastern courses matching "${state.query}"`
+    : state.subject
+      ? `${data.total} courses in ${subjName} at Northeastern University`
+      : `Browse all ${data.total} Northeastern University courses`;
+  setPageMeta(state.query ? `Search: ${state.query}` : subjName, listDesc);
+  clearJsonLd();
+
   // Sync sidebar
   sidebarSubject.value = state.subject;
   sidebarSearch.value  = state.query;
@@ -355,6 +367,25 @@ function groupSectionsByTitle(sections) {
 }
 
 function renderCourseDetail(course, sections) {
+  const courseLabel = `${course.subject} ${course.course_number}`;
+  const courseTitle = course.title || "Untitled";
+  const metaDesc = course.description
+    ? course.description.slice(0, 200)
+    : `${courseLabel} at Northeastern University — ${sections.length} section${sections.length !== 1 ? "s" : ""} offered`;
+  setPageMeta(`${courseLabel}: ${courseTitle}`, metaDesc);
+  setJsonLd({
+    "@context": "https://schema.org",
+    "@type": "Course",
+    "name": courseTitle,
+    "courseCode": courseLabel,
+    "description": metaDesc,
+    "provider": {
+      "@type": "CollegeOrUniversity",
+      "name": "Northeastern University",
+      "sameAs": "https://www.northeastern.edu"
+    }
+  });
+
   const credits = formatCredits(course.credit_hour_low, course.credit_hour_high);
   const groups = groupSectionsByTitle(sections);
 
@@ -513,6 +544,40 @@ function renderSection(s, hideTitle = false) {
     </div>`;
 }
 
+// ── SEO helpers ────────────────────────────────────────────────────────────
+const SITE_NAME = "NEU Course Explorer";
+const DEFAULT_DESC = "Browse Northeastern University courses, sections, real-time enrollment, instructors, and prerequisites across all terms.";
+
+function setPageMeta(title, description = DEFAULT_DESC) {
+  document.title = title === SITE_NAME ? title : `${title} — ${SITE_NAME}`;
+  const full = title === SITE_NAME ? title : `${title} — ${SITE_NAME}`;
+  [
+    ['meta[name="description"]',       "content",  description],
+    ['meta[property="og:title"]',      "content",  full],
+    ['meta[property="og:description"]',"content",  description],
+    ['meta[name="twitter:title"]',     "content",  full],
+    ['meta[name="twitter:description"]',"content", description],
+  ].forEach(([sel, attr, val]) => {
+    const el = document.querySelector(sel);
+    if (el) el.setAttribute(attr, val);
+  });
+}
+
+function setJsonLd(data) {
+  let el = document.getElementById("_json-ld-dynamic");
+  if (!el) {
+    el = document.createElement("script");
+    el.id = "_json-ld-dynamic";
+    el.type = "application/ld+json";
+    document.head.appendChild(el);
+  }
+  el.textContent = JSON.stringify(data);
+}
+
+function clearJsonLd() {
+  document.getElementById("_json-ld-dynamic")?.remove();
+}
+
 // ── Utilities ──────────────────────────────────────────────────────────────
 const _decodeEl = document.createElement("textarea");
 function escHtml(str) {
@@ -560,6 +625,8 @@ async function loadInstructorSections(name) {
 
 function renderInstructorView(name, sections) {
   const termDesc = state.terms.find(t => t.code === state.term)?.description || state.term;
+  setPageMeta(`Instructor: ${name}`, `${sections.length} section${sections.length !== 1 ? "s" : ""} taught by ${name} at Northeastern University in ${termDesc}.`);
+  clearJsonLd();
 
   // Group sections by course
   const groups = new Map();
