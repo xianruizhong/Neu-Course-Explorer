@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 SITE_URL = "https://neu-course-explorer.vercel.app"
-OUT_FILE = Path(__file__).parent.parent / "web" / "sitemap.xml"
+OUT_FILE = Path(__file__).parent.parent / "web" / "sitemap" / "sitemap.xml"
 
 
 def main():
