@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="6" fill="#c8102e"/>
+  <!-- open book -->
+  <path d="M7 10 C7 10 11 9 16 11 C21 9 25 10 25 10 L25 23 C25 23 21 22 16 24 C11 22 7 23 7 23 Z"
+        fill="none" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+  <line x1="16" y1="11" x2="16" y2="24" stroke="white" stroke-width="1.5"/>
+</svg>
