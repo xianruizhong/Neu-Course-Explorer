@@ -383,7 +383,7 @@ def sitemap():
                    ORDER BY subject, course_number""",
                 (code,))
             for c in courses:
-                frag = f"view=detail&term={code}&subject={c['subject']}&number={c['course_number']}"
+                frag = f"view=detail&amp;term={code}&amp;subject={c['subject']}&amp;number={c['course_number']}"
                 urls.append(f"""  <url>
     <loc>{SITE_URL}/#{frag}</loc>
     <priority>0.7</priority>
