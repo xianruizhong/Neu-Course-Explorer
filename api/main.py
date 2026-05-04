@@ -373,6 +373,11 @@ def _term_desc_to_path(desc: str) -> str | None:
     season = re.sub(r'\s+', '', m.group(1).lower())
     return f"{m.group(2)}/{season}"
 
+@app.head("/sitemap.xml", include_in_schema=False)
+def sitemap_head():
+    return Response(media_type="text/xml; charset=utf-8")
+
+
 @app.get("/sitemap.xml", include_in_schema=False)
 def sitemap():
     with get_db() as db:
