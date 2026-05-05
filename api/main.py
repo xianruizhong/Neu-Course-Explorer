@@ -179,16 +179,28 @@ def list_subjects(term_code: str):
     return [Subject(**row_to_dict(r)) for r in rows]
 
 
+@app.get("/api/terms/{term_code}/campuses", response_model=list[str])
+def list_campuses(term_code: str):
+    with get_db() as db:
+        rows = fetchall(db,
+            "SELECT DISTINCT campus FROM courses WHERE term_code=%s AND campus IS NOT NULL ORDER BY campus",
+            (term_code,))
+    return [r["campus"] for r in rows]
+
+
 @app.get("/api/terms/{term_code}/courses", response_model=SearchResult)
 def list_courses(
     term_code: str,
     subject: Optional[str] = None,
+    campus: Optional[str] = None,
     q: Optional[str] = Query(None, description="Full-text search query"),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
 ):
     subject_filter = "AND subject = %s" if subject else ""
     subject_param = [subject] if subject else []
+    campus_filter = "AND campus = %s" if campus else ""
+    campus_param = [campus] if campus else []
 
     _rank_order = """
             CASE WHEN LOWER(MAX(title)) = LOWER(%s) THEN 0 ELSE 1 END,
@@ -238,8 +250,8 @@ def list_courses(
         total_row = fetchone(db,
             f"""SELECT COUNT(DISTINCT subject || '|' || course_number) AS cnt
                 FROM courses
-                WHERE term_code = %s {subject_filter} {fts_condition}""",
-            [term_code] + subject_param + fts_params,
+                WHERE term_code = %s {subject_filter} {campus_filter} {fts_condition}""",
+            [term_code] + subject_param + campus_param + fts_params,
         )
         total = total_row["cnt"]
 
@@ -257,11 +269,11 @@ def list_courses(
                     MAX(prerequisites)    AS prerequisites,
                     COUNT(*)              AS section_count
                 FROM courses
-                WHERE term_code = %s {subject_filter} {fts_condition}
+                WHERE term_code = %s {subject_filter} {campus_filter} {fts_condition}
                 GROUP BY subject, subject_description, course_number
                 {order_clause}
                 LIMIT %s OFFSET %s""",
-            [term_code] + subject_param + fts_params + order_params + [limit, offset],
+            [term_code] + subject_param + campus_param + fts_params + order_params + [limit, offset],
         )
 
     return SearchResult(

@@ -11,7 +11,9 @@ let state = {
   term: null,
   terms: [],
   subjects: [],
+  campuses: [],
   subject: "",
+  campus: "",
   query: "",
   page: 0,        // 0-indexed
   total: 0,
@@ -30,6 +32,7 @@ const heroInput      = $("hero-search-input");
 const searchModeToggle = $("search-mode-toggle");
 const subjectGrid    = $("subject-grid");
 const sidebarSubject = $("sidebar-subject");
+const sidebarCampus  = $("sidebar-campus");
 const sidebarSearch  = $("sidebar-search");
 const sidebarApply   = $("sidebar-apply");
 const sidebarClear   = $("sidebar-clear");
@@ -213,9 +216,13 @@ async function selectTerm(code) {
   state.term = code;
   showLoading(true);
   try {
-    state.subjects = await apiFetch(`${API}/terms/${code}/subjects`);
+    [state.subjects, state.campuses] = await Promise.all([
+      apiFetch(`${API}/terms/${code}/subjects`),
+      apiFetch(`${API}/terms/${code}/campuses`),
+    ]);
     renderSubjectGrid();
     populateSidebarSubjects();
+    populateSidebarCampuses();
   } finally {
     showLoading(false);
   }
@@ -245,6 +252,11 @@ function populateSidebarSubjects() {
     state.subjects.map(s => `<option value="${s.code}">${s.code} — ${s.description}</option>`).join("");
 }
 
+function populateSidebarCampuses() {
+  sidebarCampus.innerHTML = `<option value="">All campuses</option>` +
+    state.campuses.map(c => `<option value="${c}">${escHtml(c)}</option>`).join("");
+}
+
 // ── Course list ────────────────────────────────────────────────────────────
 async function loadCourseList() {
   showLoading(true);
@@ -256,6 +268,7 @@ async function loadCourseList() {
       limit: PAGE_LIMIT,
     });
     if (state.subject) params.set("subject", state.subject);
+    if (state.campus)  params.set("campus", state.campus);
     if (state.query)   params.set("q", state.query);
 
     const data = await apiFetch(`${API}/terms/${state.term}/courses?${params}`);
@@ -284,6 +297,7 @@ function renderCourseList(data) {
 
   // Sync sidebar
   sidebarSubject.value = state.subject;
+  sidebarCampus.value  = state.campus;
   sidebarSearch.value  = state.query;
 
   if (!data.results.length) {
@@ -715,6 +729,7 @@ heroSearchForm.addEventListener("submit", e => {
 
 sidebarApply.addEventListener("click", () => {
   state.subject = sidebarSubject.value;
+  state.campus  = sidebarCampus.value;
   state.query   = sidebarSearch.value.trim();
   state.page    = 0;
   loadCourseList();
@@ -722,9 +737,11 @@ sidebarApply.addEventListener("click", () => {
 
 sidebarClear.addEventListener("click", () => {
   state.subject = "";
+  state.campus  = "";
   state.query   = "";
   state.page    = 0;
   sidebarSubject.value = "";
+  sidebarCampus.value  = "";
   sidebarSearch.value  = "";
   loadCourseList();
 });
