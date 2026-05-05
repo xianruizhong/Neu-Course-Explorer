@@ -31,6 +31,7 @@ const heroSearchForm = $("hero-search-form");
 const heroInput      = $("hero-search-input");
 const searchModeToggle = $("search-mode-toggle");
 const subjectGrid    = $("subject-grid");
+const alphNav        = $("alpha-nav");
 const sidebarSubject = $("sidebar-subject");
 const sidebarCampus  = $("sidebar-campus");
 const sidebarSearch  = $("sidebar-search");
@@ -230,12 +231,39 @@ async function selectTerm(code) {
 
 // ── Subject grid (home) ────────────────────────────────────────────────────
 function renderSubjectGrid() {
-  subjectGrid.innerHTML = state.subjects.map(s => `
-    <a class="subject-chip" href="${subjectHref(s.code)}" data-code="${s.code}">
-      <div class="subj-code">${s.code}</div>
-      <div class="subj-name">${escHtml(s.description)}</div>
-    </a>
+  const groups = {};
+  state.subjects.forEach(s => {
+    const letter = s.code[0].toUpperCase();
+    if (!groups[letter]) groups[letter] = [];
+    groups[letter].push(s);
+  });
+  const presentLetters = new Set(Object.keys(groups));
+  const allLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+
+  alphNav.innerHTML = allLetters.map(l =>
+    presentLetters.has(l)
+      ? `<a class="alpha-btn" href="#subj-letter-${l}" data-letter="${l}">${l}</a>`
+      : `<span class="alpha-btn alpha-btn--off">${l}</span>`
+  ).join("");
+
+  alphNav.querySelectorAll(".alpha-btn[data-letter]").forEach(btn => {
+    btn.addEventListener("click", e => {
+      e.preventDefault();
+      const target = document.getElementById(`subj-letter-${btn.dataset.letter}`);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+
+  subjectGrid.innerHTML = Object.keys(groups).sort().map(letter => `
+    <div class="subj-letter-header" id="subj-letter-${letter}">${letter}</div>
+    ${groups[letter].map(s => `
+      <a class="subject-chip" href="${subjectHref(s.code)}" data-code="${s.code}">
+        <div class="subj-code">${s.code}</div>
+        <div class="subj-name">${escHtml(s.description)}</div>
+      </a>
+    `).join("")}
   `).join("");
+
   subjectGrid.querySelectorAll(".subject-chip").forEach(chip => {
     chip.addEventListener("click", e => {
       e.preventDefault();

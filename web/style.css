@@ -178,6 +178,50 @@ header {
 }
 
 /* Subject grid */
+.alpha-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.alpha-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  font-size: .82rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  color: var(--neu-red);
+  transition: background .15s, border-color .15s;
+}
+.alpha-btn:hover {
+  background: var(--neu-red);
+  border-color: var(--neu-red);
+  color: #fff;
+}
+.alpha-btn--off {
+  color: var(--text-muted);
+  cursor: default;
+  pointer-events: none;
+  opacity: .4;
+}
+.subj-letter-header {
+  grid-column: 1 / -1;
+  font-size: .8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  padding: 6px 0 2px;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 16px;
+}
 .subject-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
