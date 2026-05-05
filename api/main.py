@@ -172,7 +172,7 @@ def list_terms():
 def list_subjects(term_code: str):
     with get_db() as db:
         rows = fetchall(db,
-            "SELECT code, description FROM subjects WHERE term_code=%s ORDER BY description",
+            "SELECT code, description FROM subjects WHERE term_code=%s ORDER BY code",
             (term_code,))
     if not rows:
         raise HTTPException(404, "Term not found or has no subjects")
