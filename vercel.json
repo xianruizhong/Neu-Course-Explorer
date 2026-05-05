@@ -1,8 +1,9 @@
 {
   "outputDirectory": "web",
   "rewrites": [
-    { "source": "/sitemap.xml",      "destination": "/api/index" },
-    { "source": "/schedule/:path*",  "destination": "/index.html" },
-    { "source": "/api/:path*",       "destination": "/api/index" }
+    { "source": "/sitemap.xml",                                   "destination": "/api/index" },
+    { "source": "/schedule/:year/:season/:subject/:course",        "destination": "/api/index" },
+    { "source": "/schedule/:path*",                               "destination": "/index.html" },
+    { "source": "/api/:path*",                                    "destination": "/api/index" }
   ]
 }
