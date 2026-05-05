@@ -3,6 +3,8 @@ NEU Course Explorer — FastAPI backend
 Serves course data from PostgreSQL (connection string via DATABASE_URL).
 """
 
+import html as _html
+import json
 import os
 import re
 from contextlib import contextmanager
@@ -12,11 +14,22 @@ import psycopg2
 import psycopg2.extras
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL", "")
+SITE_URL = "https://neu-course-explorer.vercel.app"
+SITE_NAME = "NEU Course Explorer"
+DEFAULT_DESC = "Browse Northeastern University courses, sections, real-time enrollment, instructors, and prerequisites across all terms."
+_TERM_PATH_RE = re.compile(r'(Spring|Summer\s*\d*|Fall)\s+(\d{4})', re.IGNORECASE)
+
+
+def _term_desc_to_path(desc: str) -> str | None:
+    m = _TERM_PATH_RE.search(desc)
+    if not m:
+        return None
+    return f"{m.group(2)}/{re.sub(r'\s+', '', m.group(1).lower())}"
 
 # Matches "CS 1800", "cs1800", "EECE 2322" etc.
 _COURSE_CODE_RE = re.compile(r'^\s*([A-Za-z]+)\s*(\d+[A-Za-z]?)\s*$')
@@ -158,8 +171,173 @@ class InstructorSummary(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# HTML helpers
+# ---------------------------------------------------------------------------
+
+def _spa_html(*, page_title=SITE_NAME, description=DEFAULT_DESC,
+              canonical=SITE_URL, json_ld: dict | None = None) -> str:
+    full_title = page_title if page_title == SITE_NAME else f"{page_title} — {SITE_NAME}"
+    esc = _html.escape
+    json_ld_tag = (
+        f'<script type="application/ld+json">{json.dumps(json_ld)}</script>'
+        if json_ld else ""
+    )
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <base href="/" />
+  <title>{esc(full_title)}</title>
+  <meta name="description" content="{esc(description)}">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="{esc(canonical)}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="NEU Course Explorer">
+  <meta property="og:title" content="{esc(full_title)}">
+  <meta property="og:description" content="{esc(description)}">
+  <meta property="og:url" content="{esc(canonical)}">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="{esc(full_title)}">
+  <meta name="twitter:description" content="{esc(description)}">
+  {json_ld_tag}
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="style.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="style.css"></noscript>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="#" class="logo" id="logo-link">
+        <span class="logo-neu">NEU</span>
+        <span class="logo-text">Course Explorer</span>
+      </a>
+      <nav class="header-nav">
+        <select id="term-select" class="term-selector" title="Select term"></select>
+      </nav>
+    </div>
+  </header>
+  <div id="view-home" class="view active">
+    <section class="hero">
+      <h1>Explore Northeastern Courses</h1>
+      <p class="hero-sub">Search the full course catalog with sections, enrollment, and prerequisites.</p>
+      <div class="search-mode-toggle" id="search-mode-toggle">
+        <button type="button" class="mode-btn active" data-mode="courses">Courses</button>
+        <button type="button" class="mode-btn" data-mode="instructor">Instructor</button>
+      </div>
+      <form class="hero-search" id="hero-search-form">
+        <input type="text" id="hero-search-input" placeholder="Search by course title, subject, or keyword…" autocomplete="off" />
+        <button type="submit">Search</button>
+      </form>
+      <div class="alpha-nav" id="alpha-nav"></div>
+      <div class="subject-grid" id="subject-grid"></div>
+    </section>
+  </div>
+  <div id="view-list" class="view">
+    <div class="list-layout">
+      <aside class="sidebar">
+        <h3>Filter</h3>
+        <label for="sidebar-subject">Subject</label>
+        <select id="sidebar-subject"><option value="">All subjects</option></select>
+        <label for="sidebar-campus" style="margin-top:12px">Campus</label>
+        <select id="sidebar-campus"><option value="">All campuses</option></select>
+        <label for="sidebar-search" style="margin-top:12px">Search</label>
+        <input type="text" id="sidebar-search" placeholder="Keyword…" />
+        <button id="sidebar-apply" class="btn-primary" style="margin-top:12px;width:100%">Apply</button>
+        <button id="sidebar-clear" class="btn-ghost" style="margin-top:6px;width:100%">Clear</button>
+      </aside>
+      <main class="course-main">
+        <div class="list-header">
+          <h2 id="list-title">Courses</h2>
+          <span id="list-count" class="count-badge"></span>
+        </div>
+        <div id="course-list" class="course-cards"></div>
+        <div id="pagination" class="pagination"></div>
+      </main>
+    </div>
+  </div>
+  <div id="view-instructor" class="view">
+    <div class="detail-layout">
+      <button class="back-btn" id="instructor-back-btn">← Back to courses</button>
+      <div id="instructor-content"></div>
+    </div>
+  </div>
+  <div id="view-detail" class="view">
+    <div class="detail-layout">
+      <button class="back-btn" id="back-btn">← Back to courses</button>
+      <div id="course-detail-content"></div>
+    </div>
+  </div>
+  <div id="loading" class="loading-overlay hidden"><div class="spinner"></div></div>
+  <footer class="site-footer">
+    <a href="https://xianruizhong.github.io/" target="_blank" rel="noopener noreferrer" class="footer-link">Xianrui Zhong</a>
+    <span class="footer-sep">·</span>
+    <a href="https://github.com/xianruizhong/Neu-Course-Explorer" target="_blank" rel="noopener noreferrer" class="footer-link footer-github-link">GitHub</a>
+  </footer>
+  <script src="app.js"></script>
+  <script defer src="/_vercel/insights/script.js"></script>
+</body>
+</html>"""
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+@app.get("/schedule/{year}/{season}/{subject}/{course_number}", response_class=HTMLResponse)
+def course_page(year: str, season: str, subject: str, course_number: str):
+    canonical = f"{SITE_URL}/schedule/{year}/{season}/{subject}/{course_number}"
+    try:
+        with get_db() as db:
+            terms = fetchall(db, "SELECT code, description FROM terms ORDER BY code DESC")
+        term = next(
+            (t for t in terms if _term_desc_to_path(t["description"]) == f"{year}/{season}"),
+            None,
+        )
+        if not term:
+            return HTMLResponse(_spa_html(), status_code=200)
+        with get_db() as db:
+            row = fetchone(
+                db,
+                """SELECT subject, course_number,
+                          MAX(course_title) AS title,
+                          MAX(description)  AS description,
+                          COUNT(*)          AS section_count
+                   FROM courses
+                   WHERE term_code=%s AND subject=%s AND course_number=%s
+                   GROUP BY subject, course_number""",
+                (term["code"], subject.upper(), course_number),
+            )
+        if not row:
+            return HTMLResponse(_spa_html(), status_code=200)
+        c = row_to_dict(row)
+        label = f"{c['subject']} {c['course_number']}"
+        title = f"{label}: {c['title'] or 'Untitled'}"
+        desc = (
+            c["description"][:200]
+            if c["description"]
+            else f"{label} at Northeastern University — {c['section_count']} section(s) offered"
+        )
+        return HTMLResponse(_spa_html(
+            page_title=title,
+            description=desc,
+            canonical=canonical,
+            json_ld={
+                "@context": "https://schema.org",
+                "@type": "Course",
+                "name": c["title"] or label,
+                "courseCode": label,
+                "description": desc,
+                "provider": {
+                    "@type": "CollegeOrUniversity",
+                    "name": "Northeastern University",
+                    "sameAs": "https://www.northeastern.edu",
+                },
+            },
+        ))
+    except Exception:
+        return HTMLResponse(_spa_html(), status_code=200)
+
 
 @app.get("/api/terms", response_model=list[Term])
 def list_terms():
@@ -374,16 +552,6 @@ def get_instructor_sections(term_code: str, instructor_name: str):
         return _build_sections(db, rows)
 
 
-
-SITE_URL = "https://neu-course-explorer.vercel.app"
-_TERM_PATH_RE = re.compile(r'(Spring|Summer\s*\d*|Fall)\s+(\d{4})', re.IGNORECASE)
-
-def _term_desc_to_path(desc: str) -> str | None:
-    m = _TERM_PATH_RE.search(desc)
-    if not m:
-        return None
-    season = re.sub(r'\s+', '', m.group(1).lower())
-    return f"{m.group(2)}/{season}"
 
 @app.head("/sitemap.xml", include_in_schema=False)
 def sitemap_head():
