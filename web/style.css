@@ -792,6 +792,8 @@ header {
   color: var(--text-muted);
   font-weight: 600;
 }
+.prereq-table th:nth-child(3), .prereq-table td:nth-child(3),
+.prereq-table th:last-child,  .prereq-table td:last-child { text-align: center; }
 
 /* ===== About section (home) ===== */
 .about-section {
