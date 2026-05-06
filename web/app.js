@@ -109,7 +109,8 @@ function instructorHref(name) {
 function writePath(view) {
   if (_restoring) return;
   const tp = currentTermPath();
-  if (view === "home") { history.pushState(null, "", "/"); return; }
+  const s = { _app: true };
+  if (view === "home") { history.pushState(s, "", "/"); return; }
   if (view === "list") {
     let path = `/schedule/${tp}`;
     if (state.subject) path += `/${state.subject}`;
@@ -117,11 +118,11 @@ function writePath(view) {
     if (state.query) qp.set("q", state.query);
     if (state.page)  qp.set("page", state.page);
     const qs = qp.toString();
-    history.pushState(null, "", path + (qs ? "?" + qs : ""));
+    history.pushState(s, "", path + (qs ? "?" + qs : ""));
   } else if (view === "detail") {
-    history.pushState(null, "", `/schedule/${tp}/${state.detailSubject}/${state.detailNumber}`);
+    history.pushState(s, "", `/schedule/${tp}/${state.detailSubject}/${state.detailNumber}`);
   } else if (view === "instructor") {
-    history.pushState(null, "", `/schedule/${tp}/instructor/${encodeURIComponent(state.detailInstructor)}`);
+    history.pushState(s, "", `/schedule/${tp}/instructor/${encodeURIComponent(state.detailInstructor)}`);
   }
 }
 
@@ -775,11 +776,23 @@ sidebarClear.addEventListener("click", () => {
 });
 
 backBtn.addEventListener("click", () => {
-  history.back();
+  if (history.state?._app) {
+    history.back();
+  } else {
+    state.subject = state.detailSubject || "";
+    state.query   = "";
+    state.page    = 0;
+    loadCourseList();
+  }
 });
 
 instructorBackBtn.addEventListener("click", () => {
-  history.back();
+  if (history.state?._app) {
+    history.back();
+  } else {
+    history.pushState({ _app: true }, "", "/");
+    showView("home");
+  }
 });
 
 document.addEventListener("click", e => {

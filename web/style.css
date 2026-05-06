@@ -492,6 +492,8 @@ header {
 }
 @media (max-width: 768px) {
   .detail-body { grid-template-columns: 1fr; }
+  .detail-side { order: -1; }
+  .detail-toc { position: static; }
 }
 
 .detail-toc {
