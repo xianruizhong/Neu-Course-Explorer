@@ -760,6 +760,53 @@ header {
   .not-found-title { font-size: 1.3rem; }
 }
 
+/* ===== About section (home) ===== */
+.about-section {
+  max-width: 760px;
+  margin: 56px auto 24px;
+  padding: 0 24px;
+  color: var(--text);
+  line-height: 1.65;
+}
+.about-section h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+.about-section h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 24px 0 8px;
+  color: var(--text);
+}
+.about-section p {
+  margin-bottom: 12px;
+  color: var(--text-muted);
+}
+.about-section ul {
+  margin: 0 0 12px 20px;
+  color: var(--text-muted);
+}
+.about-section li {
+  margin-bottom: 6px;
+}
+.about-section em {
+  font-style: normal;
+  background: rgba(200, 16, 46, .08);
+  color: var(--neu-red);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: .92em;
+}
+.about-disclaimer {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: .85rem;
+  font-style: italic;
+}
+
 /* ===== Footer ===== */
 .site-footer {
   display: flex;
