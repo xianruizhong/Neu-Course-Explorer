@@ -672,53 +672,99 @@ function formatCredits(low, high) {
 }
 
 const _PREREQ_HEADER = "And/Or Test Score Subject Course Number Level Grade";
-const _PREREQ_LEVELS = "Undergraduate|Graduate|Doctoral|Law|Pharmacy|Continuing Education";
-const _PREREQ_ROW_RE = new RegExp(
-  String.raw`\s*(?:(And|Or)\s+)?(.+?)\s+(\d{3,4}[A-Z]?)\s+(${_PREREQ_LEVELS})\s+(\S+)(?=\s+(?:And|Or)\s|\s*$)`,
-  "g"
-);
+// Keep level matching loose (Banner emits variants like "CPS - Undergraduate Semester");
+// the courseRe captures the level chunk and we sanity-check it contains a known core word.
+const _PREREQ_COURSE_RE = /^(.+?)\s+(\d{3,4}[A-Z]?)\s+(.+?)\s+(\S+)$/;
+const _PREREQ_LEVEL_TEST = /\b(?:Undergraduate|Graduate|Doctoral|Law|Pharmacy|Continuing\s+Education)\b/;
 
 function parsePrereqs(text) {
   if (!text || !text.startsWith(_PREREQ_HEADER)) return null;
-  const body = text.slice(_PREREQ_HEADER.length).trim();
+  let body = text.slice(_PREREQ_HEADER.length).trim();
   if (!body) return null;
+
+  // Drop grouping parentheses; the And/Or connectives still convey structure.
+  body = body.replace(/[()]/g, " ").replace(/\s+/g, " ").trim();
+
+  // Split into rows on capital " And " / " Or " connectives, keeping the
+  // connective with the following row.
+  const rowTexts = body.split(/\s+(?=(?:And|Or)\s)/).map(s => s.trim()).filter(Boolean);
+  if (!rowTexts.length) return null;
+
   const rows = [];
-  let m, lastEnd = 0;
-  _PREREQ_ROW_RE.lastIndex = 0;
-  while ((m = _PREREQ_ROW_RE.exec(body)) !== null) {
-    rows.push({ conn: m[1] || "", subject: m[2], number: m[3], level: m[4], grade: m[5] });
-    lastEnd = _PREREQ_ROW_RE.lastIndex;
+  for (const t of rowTexts) {
+    let conn = "";
+    let rest = t;
+    const c = t.match(/^(And|Or)\s+(.+)$/);
+    if (c) { conn = c[1]; rest = c[2]; }
+
+    const cm = rest.match(_PREREQ_COURSE_RE);
+    if (cm && _PREREQ_LEVEL_TEST.test(cm[3])) {
+      rows.push({ type: "course", conn, subject: cm[1], number: cm[2], level: cm[3], grade: cm[4] });
+      continue;
+    }
+    // Test-score / non-course requirement: "<name…> <score>" (e.g., "ALEKS 60",
+    // "Graduate Admission REQ").
+    const toks = rest.split(/\s+/);
+    if (toks.length >= 2) {
+      rows.push({ type: "test", conn, testName: toks.slice(0, -1).join(" "), score: toks[toks.length - 1] });
+    } else {
+      rows.push({ type: "raw", conn, text: rest });
+    }
   }
-  // Require near-complete consumption — partial matches mean format we don't recognize.
-  if (!rows.length || lastEnd < body.length * 0.7) return null;
-  return rows;
+  return rows.length ? rows : null;
 }
 
 function renderPrereqs(text) {
   const rows = parsePrereqs(text);
   if (!rows) return `<p>${escHtml(text)}</p>`;
+  const showTest = rows.some(r => r.type === "test");
+  const colCount = showTest ? 6 : 5;
+
+  const headerHtml = `
+    <tr>
+      <th>And/Or</th>
+      ${showTest ? "<th>Test Score</th>" : ""}
+      <th>Subject</th>
+      <th class="prereq-num">Course #</th>
+      <th>Level</th>
+      <th class="prereq-grade">Min Grade</th>
+    </tr>`;
+
+  const rowHtml = rows.map(r => {
+    if (r.type === "course") {
+      return `
+        <tr>
+          <td class="prereq-conn">${escHtml(r.conn)}</td>
+          ${showTest ? "<td></td>" : ""}
+          <td>${escHtml(r.subject)}</td>
+          <td class="prereq-num">${escHtml(r.number)}</td>
+          <td>${escHtml(r.level)}</td>
+          <td class="prereq-grade">${escHtml(r.grade)}</td>
+        </tr>`;
+    }
+    if (r.type === "test") {
+      return `
+        <tr>
+          <td class="prereq-conn">${escHtml(r.conn)}</td>
+          <td>${escHtml(r.testName)}</td>
+          <td></td>
+          <td class="prereq-num"></td>
+          <td></td>
+          <td class="prereq-grade">${escHtml(r.score)}</td>
+        </tr>`;
+    }
+    return `
+      <tr>
+        <td class="prereq-conn">${escHtml(r.conn)}</td>
+        <td colspan="${colCount - 1}">${escHtml(r.text)}</td>
+      </tr>`;
+  }).join("");
+
   return `
     <div class="prereq-table-wrap">
       <table class="prereq-table">
-        <thead>
-          <tr>
-            <th>And/Or</th>
-            <th>Subject</th>
-            <th>Course #</th>
-            <th>Level</th>
-            <th>Min Grade</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map(r => `
-            <tr>
-              <td class="prereq-conn">${escHtml(r.conn)}</td>
-              <td>${escHtml(r.subject)}</td>
-              <td>${escHtml(r.number)}</td>
-              <td>${escHtml(r.level)}</td>
-              <td>${escHtml(r.grade)}</td>
-            </tr>`).join("")}
-        </tbody>
+        <thead>${headerHtml}</thead>
+        <tbody>${rowHtml}</tbody>
       </table>
     </div>`;
 }
