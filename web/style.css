@@ -270,7 +270,7 @@ header {
 }
 @media (max-width: 768px) {
   .list-layout { grid-template-columns: 1fr; }
-  .sidebar { display: none; }
+  .sidebar { position: static; padding: 16px; }
 }
 
 .sidebar {
@@ -491,9 +491,17 @@ header {
   position: relative;
 }
 @media (max-width: 768px) {
-  .detail-body { grid-template-columns: 1fr; }
-  .detail-side { order: -1; }
-  .detail-toc { position: static; }
+  .detail-body {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .detail-main    { display: contents; }
+  .detail-desc    { order: 1; }
+  .detail-prereqs { order: 2; }
+  .detail-side    { order: 3; }
+  .sections-wrap  { order: 4; }
+  .detail-toc     { position: static; }
 }
 
 .detail-toc {
