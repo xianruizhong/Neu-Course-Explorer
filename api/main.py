@@ -202,7 +202,9 @@ def _spa_html(*, page_title=SITE_NAME, description=DEFAULT_DESC,
   <meta name="twitter:title" content="{esc(full_title)}">
   <meta name="twitter:description" content="{esc(description)}">
   {json_ld_tag}
+  <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="preload" href="style.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="style.css"></noscript>
 </head>
@@ -290,7 +292,9 @@ def _404_html() -> str:
   <title>Page not found — NEU Course Explorer</title>
   <meta name="description" content="The page you're looking for doesn't exist.">
   <meta name="robots" content="noindex">
+  <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
