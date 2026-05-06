@@ -672,7 +672,7 @@ function formatCredits(low, high) {
 const _PREREQ_HEADER = "And/Or Test Score Subject Course Number Level Grade";
 const _PREREQ_LEVELS = "Undergraduate|Graduate|Doctoral|Law|Pharmacy|Continuing Education";
 const _PREREQ_ROW_RE = new RegExp(
-  String.raw`\s*(?:(And|Or)\s+)?(.+?)\s+(\d{4}[A-Z]?)\s+(${_PREREQ_LEVELS})\s+(\S+)(?=\s+(?:And|Or)\s|\s*$)`,
+  String.raw`\s*(?:(And|Or)\s+)?(.+?)\s+(\d{3,4}[A-Z]?)\s+(${_PREREQ_LEVELS})\s+(\S+)(?=\s+(?:And|Or)\s|\s*$)`,
   "g"
 );
 
