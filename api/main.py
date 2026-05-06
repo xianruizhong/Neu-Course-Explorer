@@ -235,6 +235,24 @@ def _spa_html(*, page_title=SITE_NAME, description=DEFAULT_DESC,
       <div class="alpha-nav" id="alpha-nav"></div>
       <div class="subject-grid" id="subject-grid"></div>
     </section>
+    <section class="about-section">
+      <h2>About NEU Course Explorer</h2>
+      <p>NEU Course Explorer is a free, fast, ad-free way to browse Northeastern University's full course catalog. Data comes directly from Northeastern's Banner registration system, so you can see real-time enrollment counts, available seats, waitlist status, meeting times, instructor assignments, and prerequisites for every course offered each term — across the Boston, Oakland, Vancouver, London, Toronto, and online campuses.</p>
+      <h3>What you can do here</h3>
+      <ul>
+        <li>Browse every course by subject — Computer Science, Mathematics, Mechanical Engineering, Accounting, Biology, and more than a hundred other departments.</li>
+        <li>Search by course title, course code, or keyword. Try queries like <em>data structures</em>, <em>CS 2500</em>, or <em>organic chemistry</em>.</li>
+        <li>Look up an instructor to find every section they are teaching in the selected term.</li>
+        <li>Filter the catalog by campus to find in-person, fully online, hybrid, or co-op friendly course options.</li>
+        <li>See at a glance which sections are open, closed, or have waitlist availability before you register.</li>
+        <li>Read full course descriptions and prerequisite chains so you can plan your degree and electives confidently.</li>
+      </ul>
+      <h3>What's on each course page</h3>
+      <p>Every course page groups its sections by type — Lecture, Recitation, Lab, Seminar, Studio, or Practicum — and lists CRN numbers, meeting days and times, room locations, faculty contact information, credit hours, and current enrollment versus maximum capacity. Sections are kept up to date from the official Banner feed, so the seat counts you see here closely track what students see inside the registration portal.</p>
+      <h3>Who is this for?</h3>
+      <p>Whether you are a current Northeastern student building next semester's schedule, a prospective applicant exploring what the university offers, a faculty member curious about other departments, or an alum keeping tabs on new courses, NEU Course Explorer makes it easy to navigate the catalog without signing in or clicking through Banner's registration screens.</p>
+      <p class="about-disclaimer">This is an unofficial, student-built resource and is not affiliated with or endorsed by Northeastern University. For official course registration, please use the Northeastern Student Hub.</p>
+    </section>
   </div>
   <div id="view-list" class="view">
     <div class="list-layout">
