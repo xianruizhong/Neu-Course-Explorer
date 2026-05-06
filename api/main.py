@@ -12,11 +12,12 @@ from typing import Optional
 
 import psycopg2
 import psycopg2.extras
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL", "")
 SITE_URL = "https://neu-course-explorer.vercel.app"
@@ -280,6 +281,42 @@ def _spa_html(*, page_title=SITE_NAME, description=DEFAULT_DESC,
 </html>"""
 
 
+def _404_html() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Page not found — NEU Course Explorer</title>
+  <meta name="description" content="The page you're looking for doesn't exist.">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="/" class="logo">
+        <span class="logo-neu">NEU</span>
+        <span class="logo-text">Course Explorer</span>
+      </a>
+    </div>
+  </header>
+  <main class="not-found">
+    <div class="not-found-code">404</div>
+    <h1 class="not-found-title">Page not found</h1>
+    <p class="not-found-desc">The page you're looking for doesn't exist or has been moved.</p>
+    <a class="btn-primary not-found-cta" href="/">Back to home</a>
+  </main>
+  <footer class="site-footer">
+    <a href="https://xianruizhong.github.io/" target="_blank" rel="noopener noreferrer" class="footer-link">Xianrui Zhong</a>
+    <span class="footer-sep">·</span>
+    <a href="https://github.com/xianruizhong/Neu-Course-Explorer" target="_blank" rel="noopener noreferrer" class="footer-link">GitHub</a>
+  </footer>
+</body>
+</html>"""
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -295,7 +332,7 @@ def course_page(year: str, season: str, subject: str, course_number: str):
             None,
         )
         if not term:
-            return HTMLResponse(_spa_html(), status_code=200)
+            return HTMLResponse(_404_html(), status_code=404)
         with get_db() as db:
             row = fetchone(
                 db,
@@ -309,7 +346,7 @@ def course_page(year: str, season: str, subject: str, course_number: str):
                 (term["code"], subject.upper(), course_number),
             )
         if not row:
-            return HTMLResponse(_spa_html(), status_code=200)
+            return HTMLResponse(_404_html(), status_code=404)
         c = row_to_dict(row)
         label = f"{c['subject']} {c['course_number']}"
         title = f"{label}: {c['title'] or 'Untitled'}"
@@ -600,6 +637,13 @@ def health():
                 (SELECT COUNT(*) FROM terms)   AS terms,
                 (SELECT COUNT(*) FROM courses) AS courses""")
     return {"status": "ok", "terms": row["terms"], "courses": row["courses"]}
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 404 and not request.url.path.startswith("/api/"):
+        return HTMLResponse(_404_html(), status_code=404)
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
 
 # ── Serve static frontend (local dev only) ────────────────────────────────

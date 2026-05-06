@@ -718,6 +718,40 @@ header {
 }
 .empty-state h3 { font-size: 1.1rem; margin-bottom: 8px; color: var(--text); }
 
+/* ===== 404 page ===== */
+.not-found {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 96px 24px 64px;
+  text-align: center;
+}
+.not-found-code {
+  font-size: 6rem;
+  font-weight: 800;
+  color: var(--neu-red);
+  line-height: 1;
+  letter-spacing: -2px;
+}
+.not-found-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 16px 0 8px;
+}
+.not-found-desc {
+  color: var(--text-muted);
+  margin-bottom: 24px;
+}
+.not-found-cta {
+  display: inline-block;
+  text-decoration: none;
+}
+@media (max-width: 480px) {
+  .not-found { padding: 64px 24px 48px; }
+  .not-found-code { font-size: 4.5rem; }
+  .not-found-title { font-size: 1.3rem; }
+}
+
 /* ===== Footer ===== */
 .site-footer {
   display: flex;
