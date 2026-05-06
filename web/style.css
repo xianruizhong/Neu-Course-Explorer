@@ -497,10 +497,10 @@ header {
     gap: 24px;
   }
   .detail-main    { display: contents; }
-  .detail-desc    { order: 1; }
-  .detail-prereqs { order: 2; }
-  .detail-side    { order: 3; }
-  .sections-wrap  { order: 4; }
+  .detail-desc    { order: 1; min-width: 0; }
+  .detail-prereqs { order: 2; min-width: 0; }
+  .detail-side    { order: 3; min-width: 0; }
+  .sections-wrap  { order: 4; min-width: 0; }
   .detail-toc     { position: static; }
 }
 
@@ -778,6 +778,10 @@ header {
   text-align: left;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
+  font-size: .9rem;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text);
 }
 .prereq-table th {
   background: rgba(0,0,0,.025);

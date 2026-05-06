@@ -110,8 +110,9 @@ function writePath(view) {
   if (_restoring) return;
   const tp = currentTermPath();
   const s = { _app: true };
-  if (view === "home") { history.pushState(s, "", "/"); return; }
-  if (view === "list") {
+  if (view === "home") {
+    history.pushState(s, "", "/");
+  } else if (view === "list") {
     let path = `/schedule/${tp}`;
     if (state.subject) path += `/${state.subject}`;
     const qp = new URLSearchParams();
@@ -124,6 +125,7 @@ function writePath(view) {
   } else if (view === "instructor") {
     history.pushState(s, "", `/schedule/${tp}/instructor/${encodeURIComponent(state.detailInstructor)}`);
   }
+  window.scrollTo(0, 0);
 }
 
 async function restoreFromPath() {
@@ -672,7 +674,7 @@ function formatCredits(low, high) {
 const _PREREQ_HEADER = "And/Or Test Score Subject Course Number Level Grade";
 const _PREREQ_LEVELS = "Undergraduate|Graduate|Doctoral|Law|Pharmacy|Continuing Education";
 const _PREREQ_ROW_RE = new RegExp(
-  String.raw`\s*(?:(And|Or)\s+)?(.+?)\s+(\d{4}[A-Z]?)\s+(${_PREREQ_LEVELS})\s+(\S+)(?=\s+(?:And|Or)\s|\s*$)`,
+  String.raw`\s*(?:(And|Or)\s+)?(.+?)\s+(\d{3,4}[A-Z]?)\s+(${_PREREQ_LEVELS})\s+(\S+)(?=\s+(?:And|Or)\s|\s*$)`,
   "g"
 );
 

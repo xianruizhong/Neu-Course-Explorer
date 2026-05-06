@@ -188,6 +188,7 @@ def _spa_html(*, page_title=SITE_NAME, description=DEFAULT_DESC,
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
   <base href="/" />
   <title>{esc(full_title)}</title>
   <meta name="description" content="{esc(description)}">
@@ -307,6 +308,7 @@ def _404_html() -> str:
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
   <title>Page not found — NEU Course Explorer</title>
   <meta name="description" content="The page you're looking for doesn't exist.">
   <meta name="robots" content="noindex">
