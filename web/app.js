@@ -110,8 +110,9 @@ function writePath(view) {
   if (_restoring) return;
   const tp = currentTermPath();
   const s = { _app: true };
-  if (view === "home") { history.pushState(s, "", "/"); return; }
-  if (view === "list") {
+  if (view === "home") {
+    history.pushState(s, "", "/");
+  } else if (view === "list") {
     let path = `/schedule/${tp}`;
     if (state.subject) path += `/${state.subject}`;
     const qp = new URLSearchParams();
@@ -124,6 +125,7 @@ function writePath(view) {
   } else if (view === "instructor") {
     history.pushState(s, "", `/schedule/${tp}/instructor/${encodeURIComponent(state.detailInstructor)}`);
   }
+  window.scrollTo(0, 0);
 }
 
 async function restoreFromPath() {
