@@ -498,7 +498,7 @@ function renderCourseDetail(course, sections) {
         ${course.prerequisites ? `
           <div class="detail-prereqs">
             <h3>Prerequisites</h3>
-            <p>${escHtml(course.prerequisites)}</p>
+            ${renderPrereqs(course.prerequisites)}
           </div>` : ""}
         <div class="sections-wrap">
           <h3>${sections.length} Section${sections.length !== 1 ? "s" : ""}</h3>
@@ -667,6 +667,58 @@ function formatCredits(low, high) {
   if (!low && !high) return null;
   if (low === high || !high) return String(low ?? high);
   return `${low}–${high}`;
+}
+
+const _PREREQ_HEADER = "And/Or Test Score Subject Course Number Level Grade";
+const _PREREQ_LEVELS = "Undergraduate|Graduate|Doctoral|Law|Pharmacy|Continuing Education";
+const _PREREQ_ROW_RE = new RegExp(
+  String.raw`\s*(?:(And|Or)\s+)?(.+?)\s+(\d{4}[A-Z]?)\s+(${_PREREQ_LEVELS})\s+(\S+)(?=\s+(?:And|Or)\s|\s*$)`,
+  "g"
+);
+
+function parsePrereqs(text) {
+  if (!text || !text.startsWith(_PREREQ_HEADER)) return null;
+  const body = text.slice(_PREREQ_HEADER.length).trim();
+  if (!body) return null;
+  const rows = [];
+  let m, lastEnd = 0;
+  _PREREQ_ROW_RE.lastIndex = 0;
+  while ((m = _PREREQ_ROW_RE.exec(body)) !== null) {
+    rows.push({ conn: m[1] || "", subject: m[2], number: m[3], level: m[4], grade: m[5] });
+    lastEnd = _PREREQ_ROW_RE.lastIndex;
+  }
+  // Require near-complete consumption — partial matches mean format we don't recognize.
+  if (!rows.length || lastEnd < body.length * 0.7) return null;
+  return rows;
+}
+
+function renderPrereqs(text) {
+  const rows = parsePrereqs(text);
+  if (!rows) return `<p>${escHtml(text)}</p>`;
+  return `
+    <div class="prereq-table-wrap">
+      <table class="prereq-table">
+        <thead>
+          <tr>
+            <th>And/Or</th>
+            <th>Subject</th>
+            <th>Course #</th>
+            <th>Level</th>
+            <th>Min Grade</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td class="prereq-conn">${escHtml(r.conn)}</td>
+              <td>${escHtml(r.subject)}</td>
+              <td>${escHtml(r.number)}</td>
+              <td>${escHtml(r.level)}</td>
+              <td>${escHtml(r.grade)}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 function fmt12(t) {

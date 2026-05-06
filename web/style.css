@@ -760,6 +760,39 @@ header {
   .not-found-title { font-size: 1.3rem; }
 }
 
+/* ===== Prerequisites table ===== */
+.prereq-table-wrap {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  background: var(--card-bg);
+}
+.prereq-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .9rem;
+}
+.prereq-table th, .prereq-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.prereq-table th {
+  background: rgba(0,0,0,.025);
+  font-weight: 600;
+  font-size: .75rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+}
+.prereq-table tbody tr:last-child td { border-bottom: none; }
+.prereq-table .prereq-conn {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 /* ===== About section (home) ===== */
 .about-section {
   max-width: 760px;
