@@ -5,16 +5,19 @@ Serves course data from PostgreSQL (connection string via DATABASE_URL).
 
 import html as _html
 import json
+import logging
 import os
 import re
 from contextlib import contextmanager
 from typing import Optional
 
+logger = logging.getLogger(__name__)
+
 import psycopg2
 import psycopg2.extras
 from fastapi import FastAPI, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -176,13 +179,16 @@ class InstructorSummary(BaseModel):
 # ---------------------------------------------------------------------------
 
 def _spa_html(*, page_title=SITE_NAME, description=DEFAULT_DESC,
-              canonical=SITE_URL, json_ld: dict | None = None) -> str:
+              canonical=SITE_URL, json_ld: dict | None = None,
+              active_view: str = "home", detail_html: str = "") -> str:
     full_title = page_title if page_title == SITE_NAME else f"{page_title} — {SITE_NAME}"
     esc = _html.escape
     json_ld_tag = (
         f'<script type="application/ld+json">{json.dumps(json_ld)}</script>'
         if json_ld else ""
     )
+    home_active   = " active" if active_view == "home"   else ""
+    detail_active = " active" if active_view == "detail" else ""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -221,9 +227,9 @@ def _spa_html(*, page_title=SITE_NAME, description=DEFAULT_DESC,
       </nav>
     </div>
   </header>
-  <div id="view-home" class="view active">
+  <div id="view-home" class="view{home_active}">
     <section class="hero">
-      <h1>Explore Northeastern Courses</h1>
+      <h1>Explore Northeastern University Courses</h1>
       <p class="hero-sub">Search the full course catalog with sections, enrollment, and prerequisites.</p>
       <div class="search-mode-toggle" id="search-mode-toggle">
         <button type="button" class="mode-btn active" data-mode="courses">Courses</button>
@@ -239,6 +245,7 @@ def _spa_html(*, page_title=SITE_NAME, description=DEFAULT_DESC,
     <section class="about-section">
       <h2>About NEU Course Explorer</h2>
       <p>NEU Course Explorer is a free, fast, ad-free way to browse Northeastern University's full course catalog. Data comes directly from Northeastern's Banner registration system, so you can see real-time enrollment counts, available seats, waitlist status, meeting times, instructor assignments, and prerequisites for every course offered each term — across the Boston, Oakland, Vancouver, London, Toronto, and online campuses.</p>
+      <p><a href="/subjects">Browse all subjects</a> to see the full list of departments and the courses offered in each.</p>
       <h3>What you can do here</h3>
       <ul>
         <li>Browse every course by subject — Computer Science, Mathematics, Mechanical Engineering, Accounting, Biology, and more than a hundred other departments.</li>
@@ -284,10 +291,10 @@ def _spa_html(*, page_title=SITE_NAME, description=DEFAULT_DESC,
       <div id="instructor-content"></div>
     </div>
   </div>
-  <div id="view-detail" class="view">
+  <div id="view-detail" class="view{detail_active}">
     <div class="detail-layout">
       <button class="back-btn" id="back-btn">← Back to courses</button>
-      <div id="course-detail-content"></div>
+      <div id="course-detail-content">{detail_html}</div>
     </div>
   </div>
   <div id="loading" class="loading-overlay hidden"><div class="spinner"></div></div>
@@ -341,6 +348,92 @@ def _404_html() -> str:
 </html>"""
 
 
+def _error_html() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
+  <title>Something went wrong — NEU Course Explorer</title>
+  <meta name="description" content="An error occurred while loading this page.">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="/" class="logo">
+        <span class="logo-neu">NEU</span>
+        <span class="logo-text">Course Explorer</span>
+      </a>
+    </div>
+  </header>
+  <main class="not-found">
+    <div class="not-found-code">500</div>
+    <h1 class="not-found-title">Something went wrong</h1>
+    <p class="not-found-desc">We couldn't load this page right now. Please try again in a moment.</p>
+    <a class="btn-primary not-found-cta" href="/">Back to home</a>
+  </main>
+  <footer class="site-footer">
+    <a href="https://xianruizhong.github.io/" target="_blank" rel="noopener noreferrer" class="footer-link">Xianrui Zhong</a>
+    <span class="footer-sep">·</span>
+    <a href="https://github.com/xianruizhong/Neu-Course-Explorer" target="_blank" rel="noopener noreferrer" class="footer-link">GitHub</a>
+  </footer>
+</body>
+</html>"""
+
+
+def _directory_html(*, page_title: str, description: str, canonical: str,
+                    h1: str, intro_html: str, body_html: str) -> str:
+    full_title = f"{page_title} — {SITE_NAME}"
+    esc = _html.escape
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
+  <title>{esc(full_title)}</title>
+  <meta name="description" content="{esc(description)}">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="{esc(canonical)}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="NEU Course Explorer">
+  <meta property="og:title" content="{esc(full_title)}">
+  <meta property="og:description" content="{esc(description)}">
+  <meta property="og:url" content="{esc(canonical)}">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="/" class="logo">
+        <span class="logo-neu">NEU</span>
+        <span class="logo-text">Course Explorer</span>
+      </a>
+    </div>
+  </header>
+  <main class="directory">
+    <h1>{esc(h1)}</h1>
+    {intro_html}
+    {body_html}
+  </main>
+  <footer class="site-footer">
+    <a href="https://xianruizhong.github.io/" target="_blank" rel="noopener noreferrer" class="footer-link">Xianrui Zhong</a>
+    <span class="footer-sep">·</span>
+    <a href="https://github.com/xianruizhong/Neu-Course-Explorer" target="_blank" rel="noopener noreferrer" class="footer-link">GitHub</a>
+  </footer>
+</body>
+</html>"""
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -361,9 +454,12 @@ def course_page(year: str, season: str, subject: str, course_number: str):
             row = fetchone(
                 db,
                 """SELECT subject, course_number,
-                          MAX(course_title) AS title,
-                          MAX(description)  AS description,
-                          COUNT(*)          AS section_count
+                          MAX(course_title)     AS title,
+                          MAX(description)      AS description,
+                          MAX(prerequisites)    AS prerequisites,
+                          MAX(credit_hour_low)  AS credit_hour_low,
+                          MAX(credit_hour_high) AS credit_hour_high,
+                          COUNT(*)              AS section_count
                    FROM courses
                    WHERE term_code=%s AND subject=%s AND course_number=%s
                    GROUP BY subject, course_number""",
@@ -383,6 +479,8 @@ def course_page(year: str, season: str, subject: str, course_number: str):
             page_title=title,
             description=desc,
             canonical=canonical,
+            active_view="detail",
+            detail_html=_course_detail_html(c, term, label),
             json_ld={
                 "@context": "https://schema.org",
                 "@type": "Course",
@@ -397,7 +495,43 @@ def course_page(year: str, season: str, subject: str, course_number: str):
             },
         ))
     except Exception:
-        return HTMLResponse(_spa_html(), status_code=200)
+        logger.exception("course_page failed for %s", canonical)
+        return HTMLResponse(_error_html(), status_code=500)
+
+
+def _course_detail_html(c: dict, term: dict, label: str) -> str:
+    esc = _html.escape
+    title = c["title"] or "Untitled"
+    desc = c.get("description") or ""
+    prereqs = c.get("prerequisites") or ""
+    section_count = c.get("section_count") or 0
+    cred_lo = c.get("credit_hour_low")
+    cred_hi = c.get("credit_hour_high")
+    if cred_lo is not None and cred_hi is not None:
+        credits = (
+            f"{cred_lo:g}" if cred_lo == cred_hi
+            else f"{cred_lo:g}–{cred_hi:g}"
+        )
+        credit_html = f'<p class="course-credits"><strong>Credits:</strong> {esc(credits)}</p>'
+    else:
+        credit_html = ""
+    desc_html = f'<p class="course-description">{esc(desc)}</p>' if desc else ""
+    prereq_html = (
+        f'<section class="course-prereqs"><h2>Prerequisites</h2><p>{esc(prereqs)}</p></section>'
+        if prereqs else ""
+    )
+    return f"""
+      <article class="course-detail-ssr">
+        <header class="course-header">
+          <p class="course-term">{esc(term["description"])}</p>
+          <h1 class="course-title">{esc(label)}: {esc(title)}</h1>
+          {credit_html}
+          <p class="course-section-count">{section_count} section{"s" if section_count != 1 else ""} offered this term.</p>
+        </header>
+        {desc_html}
+        {prereq_html}
+      </article>
+    """
 
 
 @app.get("/api/terms", response_model=list[Term])
@@ -614,6 +748,93 @@ def get_instructor_sections(term_code: str, instructor_name: str):
 
 
 
+def _latest_term(db) -> dict | None:
+    rows = fetchall(db, "SELECT code, description FROM terms ORDER BY code DESC LIMIT 1")
+    return rows[0] if rows else None
+
+
+@app.get("/subjects", response_class=HTMLResponse)
+def subjects_directory():
+    canonical = f"{SITE_URL}/subjects"
+    try:
+        with get_db() as db:
+            term = _latest_term(db)
+            if not term:
+                return HTMLResponse(_404_html(), status_code=404)
+            subjects = fetchall(db,
+                "SELECT code, description FROM subjects WHERE term_code=%s ORDER BY code",
+                (term["code"],))
+        if not subjects:
+            return HTMLResponse(_404_html(), status_code=404)
+        esc = _html.escape
+        items = "\n".join(
+            f'<li><a href="/subject/{esc(s["code"])}">{esc(s["code"])} — {esc(s["description"] or "")}</a></li>'
+            for s in subjects
+        )
+        body = f'<ul class="subject-directory">{items}</ul>'
+        return HTMLResponse(_directory_html(
+            page_title="Browse Subjects",
+            description=f"Browse all {len(subjects)} academic subjects offered at Northeastern University, from Computer Science to Biology to Accounting.",
+            canonical=canonical,
+            h1="Browse all subjects",
+            intro_html=f'<p class="directory-intro">All subjects with courses offered in {esc(term["description"])}. Click a subject to see its courses.</p>',
+            body_html=body,
+        ))
+    except Exception:
+        logger.exception("subjects_directory failed")
+        return HTMLResponse(_error_html(), status_code=500)
+
+
+@app.get("/subject/{subject}", response_class=HTMLResponse)
+def subject_directory(subject: str):
+    subject_upper = subject.upper()
+    if subject != subject_upper:
+        return RedirectResponse(f"/subject/{subject_upper}", status_code=301)
+    canonical = f"{SITE_URL}/subject/{subject_upper}"
+    try:
+        with get_db() as db:
+            term = _latest_term(db)
+            if not term:
+                return HTMLResponse(_404_html(), status_code=404)
+            term_path = _term_desc_to_path(term["description"])
+            subj_row = fetchone(db,
+                "SELECT description FROM subjects WHERE term_code=%s AND code=%s",
+                (term["code"], subject_upper))
+            if not subj_row:
+                return HTMLResponse(_404_html(), status_code=404)
+            courses = fetchall(db,
+                """SELECT subject, course_number,
+                          MAX(course_title) AS title,
+                          COUNT(*)          AS section_count
+                   FROM courses
+                   WHERE term_code=%s AND subject=%s
+                   GROUP BY subject, course_number
+                   ORDER BY CAST(course_number AS INTEGER)""",
+                (term["code"], subject_upper))
+        if not courses:
+            return HTMLResponse(_404_html(), status_code=404)
+        esc = _html.escape
+        subj_desc = subj_row["description"] or subject_upper
+        items = "\n".join(
+            f'<li><a href="/schedule/{term_path}/{esc(c["subject"])}/{esc(c["course_number"])}">'
+            f'{esc(c["subject"])} {esc(c["course_number"])} — {esc(c["title"] or "Untitled")}</a> '
+            f'<span class="section-count">({c["section_count"]} section{"s" if c["section_count"] != 1 else ""})</span></li>'
+            for c in courses
+        )
+        body = f'<ul class="course-directory">{items}</ul>'
+        return HTMLResponse(_directory_html(
+            page_title=f"{subj_desc} courses",
+            description=f"Browse all {len(courses)} {subj_desc} ({subject_upper}) courses offered at Northeastern University in {term['description']}.",
+            canonical=canonical,
+            h1=f"{subj_desc} ({subject_upper})",
+            intro_html=f'<p class="directory-intro">All {subject_upper} courses offered in {esc(term["description"])}. <a href="/subjects">Browse other subjects</a>.</p>',
+            body_html=body,
+        ))
+    except Exception:
+        logger.exception("subject_directory failed for %s", subject)
+        return HTMLResponse(_error_html(), status_code=500)
+
+
 @app.head("/sitemap.xml", include_in_schema=False)
 def sitemap_head():
     return Response(media_type="text/xml; charset=utf-8")
@@ -628,7 +849,22 @@ def sitemap():
     <loc>{SITE_URL}/</loc>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
+  </url>""", f"""  <url>
+    <loc>{SITE_URL}/subjects</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
   </url>"""]
+
+        if terms:
+            latest_subjects = fetchall(db,
+                "SELECT code FROM subjects WHERE term_code=%s ORDER BY code",
+                (terms[0]["code"],))
+            for s in latest_subjects:
+                urls.append(f"""  <url>
+    <loc>{SITE_URL}/subject/{s["code"]}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>""")
 
         for term in terms:
             term_path = _term_desc_to_path(term["description"])
